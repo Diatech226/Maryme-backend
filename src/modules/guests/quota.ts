@@ -1,0 +1,1 @@
+import { ConflictException } from '@nestjs/common'; export function assertQuota(current:number,incoming:number,quota:number):void{if(current+incoming>quota)throw new ConflictException(`Guest quota exceeded: ${current + incoming}/${quota} seats`)}

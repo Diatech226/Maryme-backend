@@ -1,0 +1,1 @@
+import { ConflictException } from '@nestjs/common'; import { assertQuota } from './quota'; describe('guest quota', () => { it('counts coupons', () => expect(() => assertQuota(3, 2, 5)).not.toThrow()); it('rejects overflow', () => expect(() => assertQuota(4, 2, 5)).toThrow(ConflictException)); });

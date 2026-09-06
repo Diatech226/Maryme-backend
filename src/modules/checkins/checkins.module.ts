@@ -1,0 +1,1 @@
+import { Module } from '@nestjs/common';import { InvitationsModule } from '../invitations/invitations.module';import { CheckInsController } from './checkins.controller';import { CheckInsService } from './checkins.service';@Module({imports:[InvitationsModule],controllers:[CheckInsController],providers:[CheckInsService]})export class CheckInsModule{}
