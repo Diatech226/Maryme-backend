@@ -1,5 +1,5 @@
 import { INestApplication } from '@nestjs/common';
-import request from 'supertest';
+import request = require('supertest');
 import * as argon2 from 'argon2';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { InvitationStatus, UserRole } from '@prisma/client';
