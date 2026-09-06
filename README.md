@@ -8,10 +8,32 @@ NestJS strict TypeScript → modules Auth, Couples, Guests, Invitations, Check-i
 
 ## Installation et PostgreSQL
 
+Prérequis : Node.js 22, npm et Docker Desktop. L'installation génère Prisma
+Client automatiquement grâce au script `postinstall`; `prisma:generate` reste
+disponible pour forcer manuellement sa régénération après une modification du
+schéma.
+
+### Windows PowerShell (nouvelle machine)
+
+```powershell
+git clone https://github.com/Diatech226/Maryme-backend.git
+cd Maryme-backend
+Copy-Item .env.example .env
+npm ci
+docker compose up -d postgres
+npx prisma migrate deploy
+npm run start:dev
+```
+
+L'API écoute sur `http://localhost:4000`, la santé sur
+`http://localhost:4000/api/v1/health` et Swagger sur
+`http://localhost:4000/api/docs`.
+
+### Linux et macOS
+
 ```bash
 cp .env.example .env                 # remplacer chaque secret
-npm install
-npm run prisma:generate
+npm ci                               # exécute automatiquement prisma generate
 docker compose up -d postgres
 npm run prisma:migrate
 npm run build
@@ -19,7 +41,7 @@ npm run admin:bootstrap              # crée/synchronise le SUPER_ADMIN depuis l
 npm run start:dev
 ```
 
-L'API écoute sur `http://localhost:4000/api/v1`. `DATABASE_URL` doit pointer vers une base dédiée. Le seed ne crée aucun compte administrateur : le compte principal est géré exclusivement par `admin:bootstrap`.
+`DATABASE_URL` doit pointer vers une base dédiée. Le seed ne crée aucun compte administrateur : le compte principal est géré exclusivement par `admin:bootstrap`.
 
 ## Variables d'environnement
 
