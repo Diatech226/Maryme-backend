@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { UserRole } from '@prisma/client';
 import * as argon2 from 'argon2';
-import request from 'supertest';
+import request = require('supertest');
 import { PrismaService } from '../src/prisma/prisma.service';
 import { cleanTestDatabase, createTestApplication } from './test-application';
 
