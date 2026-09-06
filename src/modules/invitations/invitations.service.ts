@@ -16,7 +16,9 @@ export class InvitationsService {
     return createHash('sha256').update(t).digest('hex');
   }
   async generate(guestId: string, dto: CreateInvitationDto, user: AuthUser) {
-    const guest = await this.prisma.guest.findFirst({ where: { id: guestId, deletedAt: null } });
+    const guest = await this.prisma.guest.findFirst({
+      where: { id: guestId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+    });
     if (!guest) throw new NotFoundException('Guest not found');
     assertCoupleAccess(user, guest.coupleId);
     if (dto.expiresAt && dto.expiresAt <= new Date())
@@ -47,7 +49,9 @@ export class InvitationsService {
     return { ...safe, token, qrPayload: { version: 1, token } };
   }
   async list(guestId: string, user: AuthUser) {
-    const guest = await this.prisma.guest.findFirst({ where: { id: guestId, deletedAt: null } });
+    const guest = await this.prisma.guest.findFirst({
+      where: { id: guestId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+    });
     if (!guest) throw new NotFoundException('Guest not found');
     assertCoupleAccess(user, guest.coupleId);
     return this.prisma.invitation.findMany({
