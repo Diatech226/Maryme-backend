@@ -19,8 +19,7 @@
     "test:e2e": "jest --config test/jest-e2e.json --runInBand",
     "test:cov": "jest --coverage --runInBand",
     "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:deploy": "prisma migrate deploy",
+    "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
     "seed": "prisma db seed",
     "admin:bootstrap:dev": "ts-node src/scripts/bootstrap-admin.ts",
@@ -65,9 +64,6 @@
     "ts-jest": "^29.4.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.2"
-  },
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
   },
   "engines": {
     "node": ">=22"

@@ -56,7 +56,7 @@ export async function ensureSuperAdmin(
       const now = new Date();
       const user = await transaction.user.update({ where: { id: existing.id }, data });
       await transaction.refreshSession.updateMany({
-        where: { userId: existing.id, revokedAt: null },
+        where: { userId: existing.id, OR: [{ revokedAt: null }, { revokedAt: { isSet: false } }] },
         data: { revokedAt: now },
       });
       return { user, created: false };

@@ -19,4 +19,4 @@ COPY --from=build --chown=maryme:nodejs /app/prisma ./prisma
 COPY --from=build --chown=maryme:nodejs /app/package.json ./package.json
 USER maryme
 EXPOSE 4000
-CMD ["sh","-c","npx prisma migrate deploy && node dist/main.js"]
+CMD ["sh","-c","npx prisma db push && node dist/main.js"]

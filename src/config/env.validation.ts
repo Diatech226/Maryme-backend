@@ -42,7 +42,7 @@ export const envValidationSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'test', 'production').default('development'),
   PORT: Joi.number().port().default(4000),
   DATABASE_URL: Joi.string()
-    .uri({ scheme: ['postgresql', 'postgres'] })
+    .uri({ scheme: ['mongodb', 'mongodb+srv'] })
     .required(),
   CORS_ORIGINS: Joi.string().required(),
   FRONTEND_URL: Joi.string().uri().required(),
