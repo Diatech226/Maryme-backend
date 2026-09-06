@@ -45,11 +45,20 @@ describe('SUPER_ADMIN environment validation', () => {
     ).toThrow('SUPER_ADMIN_PHONE');
   });
 
-  it('rejects weak credentials and local phone numbers', () => {
+  it('accepts a SUPER_ADMIN password of exactly eight characters', () => {
     expect(() =>
       validateSuperAdminEnvironment({
         ...valid,
-        SUPER_ADMIN_PASSWORD: 'password',
+        SUPER_ADMIN_PASSWORD: 'Abcd1234',
+      } as NodeJS.ProcessEnv),
+    ).not.toThrow();
+  });
+
+  it('rejects passwords shorter than eight characters and local phone numbers', () => {
+    expect(() =>
+      validateSuperAdminEnvironment({
+        ...valid,
+        SUPER_ADMIN_PASSWORD: '1234567',
       } as NodeJS.ProcessEnv),
     ).toThrow('SUPER_ADMIN_PASSWORD');
     expect(() =>

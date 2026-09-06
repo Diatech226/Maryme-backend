@@ -46,14 +46,19 @@ export class AuthService {
     };
   }
   private assertAccess(user: UserWithStatus) {
-    if (!user.isActive) throw new UnauthorizedException('Account is inactive');
-    if (
-      user.role === UserRole.COUPLE &&
-      (!user.couple || user.couple.deletedAt || user.couple.status !== CoupleStatus.AUTHORIZED)
-    )
+    if (!user.isActive) throw new ForbiddenException('Ce compte est inactif.');
+    if (user.role !== UserRole.COUPLE) return;
+    if (!user.couple || user.couple.deletedAt) {
+      throw new ForbiddenException("Ce compte n'est plus disponible.");
+    }
+    if (user.couple.status === CoupleStatus.PENDING) {
       throw new ForbiddenException(
-        `Couple access is ${user.couple?.status.toLowerCase() ?? 'unavailable'}`,
+        "Votre compte existe mais votre dossier n'est pas encore autorisé.",
       );
+    }
+    if (user.couple.status === CoupleStatus.SUSPENDED) {
+      throw new ForbiddenException('Ce compte est actuellement suspendu.');
+    }
   }
   private async issue(user: User, ipAddress?: string, userAgent?: string): Promise<SessionResult> {
     const accessToken = await this.jwt.signAsync({
@@ -78,7 +83,7 @@ export class AuthService {
       where: { email: dto.email.trim().toLowerCase() },
       include: { couple: { select: { status: true, deletedAt: true } } },
     });
-    if (!user || !user.isActive || !(await argon2.verify(user.passwordHash, dto.password))) {
+    if (!user || !(await argon2.verify(user.passwordHash, dto.password))) {
       void this.audit.record({
         action: 'LOGIN_FAILED',
         entityType: 'User',

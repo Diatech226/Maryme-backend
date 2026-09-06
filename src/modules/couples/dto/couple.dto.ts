@@ -12,7 +12,7 @@ import {
   Min,
   MinLength,
 } from 'class-validator';
-import { PASSWORD_MIN_LENGTH } from '../../auth/dto/login.dto';
+import { COUPLE_PASSWORD_MIN_LENGTH } from '../../auth/password-policy.constants';
 export class CreateCoupleDto {
   @IsString() partner1!: string;
   @IsString() partner2!: string;
@@ -25,7 +25,8 @@ export class CreateCoupleDto {
   @IsOptional() @IsString() partner1FullName?: string;
   @IsOptional() @IsString() partner2FullName?: string;
   @IsOptional() @IsEmail() accountEmail?: string;
-  @IsOptional() @IsString() @MinLength(PASSWORD_MIN_LENGTH) accountPassword?: string;
+  @IsOptional() @IsString() accountPhone?: string;
+  @IsOptional() @IsString() @MinLength(COUPLE_PASSWORD_MIN_LENGTH) accountPassword?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) groomFamilies?: string[];
   @IsOptional() @IsArray() @IsString({ each: true }) brideFamilies?: string[];
 }
@@ -51,4 +52,20 @@ export class CoupleQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 50;
   @IsOptional() @IsEnum(CoupleStatus) status?: CoupleStatus;
   @IsOptional() @IsString() search?: string;
+}
+
+export class ResetCouplePasswordDto {
+  @IsString()
+  @MinLength(COUPLE_PASSWORD_MIN_LENGTH)
+  password!: string;
+}
+
+export class UpdateCoupleAccountDto {
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  phone?: string;
 }

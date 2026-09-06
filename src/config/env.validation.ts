@@ -1,4 +1,5 @@
 import * as Joi from 'joi';
+import { SUPER_ADMIN_PASSWORD_MIN_LENGTH } from '../modules/auth/password-policy.constants';
 
 const internationalPhone = Joi.string()
   .trim()
@@ -12,10 +13,7 @@ export const superAdminEnvValidationSchema = Joi.object({
     .invalid('admin@admin.com')
     .required(),
   SUPER_ADMIN_PHONE: internationalPhone.required(),
-  SUPER_ADMIN_PASSWORD: Joi.string()
-    .min(12)
-    .invalid('admin123', 'password', '123456', 'maryme2026')
-    .required(),
+  SUPER_ADMIN_PASSWORD: Joi.string().min(SUPER_ADMIN_PASSWORD_MIN_LENGTH).required(),
   SUPER_ADMIN_FIRST_NAME: Joi.string().trim().min(1).required(),
   SUPER_ADMIN_LAST_NAME: Joi.string().trim().min(1).required(),
 }).unknown(true);
@@ -59,10 +57,7 @@ export const envValidationSchema = Joi.object({
     .invalid('admin@admin.com')
     .optional(),
   SUPER_ADMIN_PHONE: internationalPhone.optional(),
-  SUPER_ADMIN_PASSWORD: Joi.string()
-    .min(12)
-    .invalid('admin123', 'password', '123456', 'maryme2026')
-    .optional(),
+  SUPER_ADMIN_PASSWORD: Joi.string().min(SUPER_ADMIN_PASSWORD_MIN_LENGTH).optional(),
   SUPER_ADMIN_FIRST_NAME: Joi.string().trim().min(1).optional(),
   SUPER_ADMIN_LAST_NAME: Joi.string().trim().min(1).optional(),
 });

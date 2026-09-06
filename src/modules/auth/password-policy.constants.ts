@@ -1,0 +1,2 @@
+export const COUPLE_PASSWORD_MIN_LENGTH = 6;
+export const SUPER_ADMIN_PASSWORD_MIN_LENGTH = 8;
