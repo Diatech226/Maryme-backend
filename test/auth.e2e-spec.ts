@@ -32,7 +32,7 @@ describe('Auth session (e2e)', () => {
       .post('/api/v1/auth/login')
       .send({ email: 'admin.e2e@maryme.test', password: 'AdminPassword123!' })
       .expect(200);
-    expect(login.body.data.accessToken).toBeDefined();
+    expect(login.body.accessToken).toBeDefined();
     const cookie = login.headers['set-cookie'];
     expect(cookie?.[0]).toContain('maryme_refresh=');
     expect(cookie?.[0]).toContain('HttpOnly');
@@ -40,10 +40,10 @@ describe('Auth session (e2e)', () => {
       .post('/api/v1/auth/refresh')
       .set('Cookie', cookie)
       .expect(200);
-    expect(refresh.body.data.accessToken).toBeDefined();
+    expect(refresh.body.accessToken).toBeDefined();
     await request(app.getHttpServer())
       .get('/api/v1/auth/me')
-      .set('Authorization', `Bearer ${refresh.body.data.accessToken}`)
+      .set('Authorization', `Bearer ${refresh.body.accessToken}`)
       .expect(200)
       .expect(({ body }) => expect(body.data.email).toBe('admin.e2e@maryme.test'));
   });
