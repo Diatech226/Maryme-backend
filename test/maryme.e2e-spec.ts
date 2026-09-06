@@ -32,7 +32,7 @@ describe('Maryme lifecycle (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/auth/login')
         .send({ email: 'admin.flow@maryme.test', password: 'AdminPassword123!' })
-    ).body.data.accessToken;
+    ).body.accessToken;
   });
   afterAll(() => app?.close());
   const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
@@ -60,7 +60,7 @@ describe('Maryme lifecycle (e2e)', () => {
       .post('/api/v1/auth/login')
       .send({ email, password })
       .expect(200);
-    const token = login.body.data.accessToken;
+    const token = login.body.accessToken;
     const guest = (
       await request(app.getHttpServer())
         .post(`/api/v1/couples/${id}/guests`)
@@ -157,7 +157,7 @@ describe('Maryme lifecycle (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/auth/login')
         .send({ email: 'a@maryme.test', password: 'CouplePassword123!' })
-    ).body.data.accessToken;
+    ).body.accessToken;
     const guest = {
       firstName: 'A',
       lastName: 'Guest',
