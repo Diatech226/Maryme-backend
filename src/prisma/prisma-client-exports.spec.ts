@@ -31,7 +31,7 @@ describe('generated Prisma Client exports', () => {
     expect(RsvpStatus.CONFIRMED).toBe('CONFIRMED');
     expect(DietaryRequirement.HALAL).toBe('HALAL');
     expect(Prisma.dmmf.datamodel.models.map(({ name }) => name)).toEqual(
-      expect.arrayContaining(['User', 'Couple', 'Guest', 'Invitation', 'CheckIn', 'AuditLog']),
+      expect.arrayContaining(['User', 'Couple', 'Guest', 'Coupon', 'Invitation', 'CheckIn', 'AuditLog']),
     );
     expect(PrismaClient).toBeDefined();
   });

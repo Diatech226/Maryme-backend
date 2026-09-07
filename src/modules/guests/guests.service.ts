@@ -4,11 +4,14 @@ import { assertCoupleAccess } from '../../common/utils/ownership';
 import { AuthUser } from '../../common/types/auth-user';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CouponPoolService } from '../coupons/coupon-pool.service';
 import {
   BulkCreateGuestsDto,
   BulkGuestsMode,
   CreateGuestDto,
   GuestQueryDto,
+  GuestImportDto,
+  ImportGuestRowDto,
   UpdateGuestDto,
 } from './dto/guest.dto';
 import { assertQuota } from './quota';
@@ -17,6 +20,7 @@ export class GuestsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly couponPool: CouponPoolService,
   ) {}
   private async couple(id: string, user: AuthUser) {
     assertCoupleAccess(user, id);
@@ -73,7 +77,12 @@ export class GuestsService {
   async create(id: string, dto: CreateGuestDto, user: AuthUser) {
     const c = await this.couple(id, user);
     assertQuota(await this.used(id), dto.coupons, c.guestQuota);
-    const g = await this.prisma.guest.create({ data: { ...dto, coupleId: id } });
+    const g = await this.prisma.$transaction(async (tx) => {
+      const guest = await tx.guest.create({ data: { ...dto, coupleId: id } });
+      await this.couponPool.ensurePool(id, c.guestQuota, tx);
+      await this.couponPool.assignLowest(guest.id, guest.coupons, tx);
+      return guest;
+    });
     this.audit.record({
       userId: user.sub,
       action: 'GUEST_CREATED',
@@ -91,6 +100,7 @@ export class GuestsService {
       c.guestQuota,
     );
     await this.prisma.$transaction(async (tx) => {
+      await this.couponPool.ensurePool(id, c.guestQuota, tx);
       if (dto.mode === BulkGuestsMode.REPLACE) {
         if (await tx.checkIn.count({ where: { coupleId: id } }))
           throw new ConflictException(
@@ -99,9 +109,16 @@ export class GuestsService {
         // Invitations contain token hashes tied to the old guest set: deleting them
         // atomically revokes every previously issued QR code before guests are replaced.
         await tx.invitation.deleteMany({ where: { coupleId: id } });
+        await tx.coupon.updateMany({
+          where: { coupleId: id, status: 'ASSIGNED' },
+          data: { guestId: null, status: 'AVAILABLE', assignedAt: null, releasedAt: new Date() },
+        });
         await tx.guest.deleteMany({ where: { coupleId: id } });
       }
-      for (const guest of dto.guests) await tx.guest.create({ data: { ...guest, coupleId: id } });
+      for (const guest of dto.guests) {
+        const created = await tx.guest.create({ data: { ...guest, coupleId: id } });
+        await this.couponPool.assignLowest(created.id, created.coupons, tx);
+      }
     });
     void this.audit.record({
       userId: user.sub,
@@ -111,6 +128,236 @@ export class GuestsService {
       metadata: { count: dto.guests.length },
     });
     return { created: dto.guests.length, failed: 0 };
+  }
+  async importGuests(id: string, dto: GuestImportDto, user: AuthUser) {
+    const couple = await this.couple(id, user);
+    if (dto.mode !== BulkGuestsMode.MERGE)
+      return this.bulk(
+        id,
+        { mode: dto.mode, guests: dto.guests.map((row) => this.toCreate(row)) },
+        user,
+      );
+    await this.couponPool.ensurePool(id, couple.guestQuota);
+    const existing = await this.prisma.guest.findMany({
+      where: { coupleId: id, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+      include: { couponNumbers: true, checkIn: true },
+    });
+    const norm = (value?: string | null) =>
+      (value ?? '')
+        .trim()
+        .toLocaleLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    const phone = (value?: string | null) => (value ?? '').replace(/\D/g, '');
+    const rows = dto.guests.map((row, index) => {
+      const candidates = (predicate: (guest: (typeof existing)[number]) => boolean) =>
+        existing.filter(predicate);
+      let matches = row.guestId ? candidates((g) => g.id === row.guestId) : [];
+      if (!matches.length && row.externalRef)
+        matches = candidates((g) => norm(g.externalRef) === norm(row.externalRef));
+      if (!matches.length && row.email)
+        matches = candidates((g) => Boolean(g.email) && norm(g.email) === norm(row.email));
+      if (!matches.length && row.phone)
+        matches = candidates((g) => Boolean(g.phone) && phone(g.phone) === phone(row.phone));
+      if (!matches.length)
+        matches = candidates(
+          (g) =>
+            norm(g.firstName) === norm(row.firstName) &&
+            norm(g.lastName) === norm(row.lastName) &&
+            g.side === row.side &&
+            norm(g.family) === norm(row.family),
+        );
+      if (matches.length > 1)
+        return {
+          index,
+          action: 'CONFLICT' as const,
+          code: 'IMPORT_AMBIGUOUS_MATCH',
+          changes: {},
+          row,
+        };
+      if (!matches.length) return { index, action: 'CREATE' as const, changes: {}, row };
+      const guest = matches[0];
+      const changes: Record<string, unknown> = {};
+      for (const key of [
+        'externalRef',
+        'firstName',
+        'lastName',
+        'side',
+        'family',
+        'coupons',
+        'category',
+        'rsvpStatus',
+        'dietary',
+        'plusOne',
+        'plusOneName',
+        'isChild',
+        'tableNumber',
+        'phone',
+        'email',
+        'lodgingNeeded',
+        'notes',
+      ] as const) {
+        const value = row[key];
+        if (value === undefined || value === '') continue;
+        const next = value === '__CLEAR__' ? null : value;
+        if (guest[key] !== next) changes[key] = next;
+      }
+      if ((changes.coupons !== undefined || row.couponNumbers) && guest.checkIn)
+        return {
+          index,
+          action: 'CONFLICT' as const,
+          code: 'COUPON_ALREADY_USED',
+          changes,
+          row,
+          guest,
+        };
+      return {
+        index,
+        action:
+          Object.keys(changes).length || row.couponNumbers
+            ? ('UPDATE' as const)
+            : ('UNCHANGED' as const),
+        changes,
+        row,
+        guest,
+      };
+    });
+    const conflicts = rows.filter((r) => r.action === 'CONFLICT').length;
+    const beforeAvailable = await this.prisma.coupon.count({
+      where: { coupleId: id, status: 'AVAILABLE' },
+    });
+    const requested =
+      rows
+        .filter((r) => r.action === 'CREATE')
+        .reduce((n, r) => n + (r.row.coupons ?? r.row.couponNumbers?.length ?? 1), 0) +
+      rows
+        .filter((r) => r.action === 'UPDATE')
+        .reduce(
+          (n, r) =>
+            n +
+            Math.max(
+              0,
+              Number((r.changes as Record<string, unknown>).coupons ?? r.guest!.coupons) -
+                r.guest!.coupons,
+            ),
+          0,
+        );
+    const response = {
+      summary: {
+        rows: rows.length,
+        create: rows.filter((r) => r.action === 'CREATE').length,
+        update: rows.filter((r) => r.action === 'UPDATE').length,
+        unchanged: rows.filter((r) => r.action === 'UNCHANGED').length,
+        conflicts,
+      },
+      coupons: {
+        beforeAvailable,
+        afterAvailable: beforeAvailable - requested,
+        newAssignments: requested,
+        released: 0,
+      },
+      rows: rows.map(({ guest, row, ...result }) => ({ ...result, guestId: guest?.id })),
+    };
+    if (dto.dryRun) {
+      this.audit.record({
+        userId: user.sub,
+        action: 'GUEST_IMPORT_PREVIEWED',
+        entityType: 'Couple',
+        entityId: id,
+        metadata: response.summary,
+      });
+      return response;
+    }
+    if (conflicts)
+      throw new ConflictException({
+        code: 'IMPORT_AMBIGUOUS_MATCH',
+        message: "L'import contient des conflits; aucun changement appliqué.",
+        rows: response.rows,
+      });
+    await this.prisma.$transaction(async (tx) => {
+      for (const plan of rows) {
+        if (plan.action === 'UNCHANGED') continue;
+        let guestId: string;
+        let count: number;
+        if (plan.action === 'CREATE') {
+          const data = this.toCreate(plan.row);
+          const guest = await tx.guest.create({
+            data: { ...data, externalRef: plan.row.externalRef, coupleId: id },
+          });
+          guestId = guest.id;
+          count = guest.coupons;
+        } else {
+          const guest = await tx.guest.update({
+            where: { id: plan.guest!.id },
+            data: plan.changes,
+          });
+          guestId = guest.id;
+          count = guest.coupons;
+        }
+        if (plan.row.couponNumbers)
+          await this.assignImportedNumbers(tx, id, guestId, count, plan.row.couponNumbers);
+        else if (dto.autoAssignCoupons) await this.couponPool.syncCount(guestId, count, tx);
+      }
+    });
+    this.audit.record({
+      userId: user.sub,
+      action: 'GUESTS_MERGED',
+      entityType: 'Couple',
+      entityId: id,
+      metadata: response.summary,
+    });
+    return response;
+  }
+  private toCreate(row: ImportGuestRowDto): CreateGuestDto {
+    return {
+      firstName: row.firstName,
+      lastName: row.lastName,
+      side: row.side,
+      family: row.family,
+      coupons: row.coupons ?? row.couponNumbers?.length ?? 1,
+      category: row.category ?? ('FRIENDS' as CreateGuestDto['category']),
+      rsvpStatus: row.rsvpStatus,
+      dietary: row.dietary,
+      plusOne: row.plusOne,
+      plusOneName: row.plusOneName,
+      isChild: row.isChild,
+      tableNumber: row.tableNumber,
+      phone: row.phone,
+      email: row.email,
+      lodgingNeeded: row.lodgingNeeded,
+      notes: row.notes,
+    };
+  }
+  private async assignImportedNumbers(
+    tx: Prisma.TransactionClient,
+    coupleId: string,
+    guestId: string,
+    count: number,
+    numbers: number[],
+  ) {
+    if (numbers.length !== count)
+      throw new ConflictException({
+        code: 'COUPON_COUNT_MISMATCH',
+        message: 'Nombre de coupons incohérent.',
+      });
+    const selected = await tx.coupon.findMany({ where: { coupleId, number: { in: numbers } } });
+    if (selected.length !== numbers.length)
+      throw new ConflictException({ code: 'COUPON_NOT_FOUND', message: 'Coupon inexistant.' });
+    if (selected.some((c) => c.status === 'USED'))
+      throw new ConflictException({ code: 'COUPON_ALREADY_USED', message: 'Coupon utilisé.' });
+    if (selected.some((c) => c.guestId && c.guestId !== guestId))
+      throw new ConflictException({
+        code: 'COUPON_ALREADY_ASSIGNED',
+        message: 'Coupon attribué à un autre invité.',
+      });
+    await tx.coupon.updateMany({
+      where: { guestId, status: 'ASSIGNED', number: { notIn: numbers } },
+      data: { guestId: null, status: 'AVAILABLE', assignedAt: null, releasedAt: new Date() },
+    });
+    await tx.coupon.updateMany({
+      where: { coupleId, number: { in: numbers } },
+      data: { guestId, status: 'ASSIGNED', assignedAt: new Date(), releasedAt: null },
+    });
   }
   async get(id: string, user: AuthUser) {
     const g = await this.prisma.guest.findFirst({
@@ -126,7 +373,11 @@ export class GuestsService {
       const c = await this.couple(g.coupleId, user);
       assertQuota((await this.used(g.coupleId)) - g.coupons, dto.coupons, c.guestQuota);
     }
-    const result = await this.prisma.guest.update({ where: { id }, data: dto });
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.guest.update({ where: { id }, data: dto });
+      if (dto.coupons !== undefined) await this.couponPool.syncCount(id, dto.coupons, tx);
+      return updated;
+    });
     this.audit.record({
       userId: user.sub,
       action: 'GUEST_UPDATED',
@@ -138,13 +389,17 @@ export class GuestsService {
   async remove(id: string, user: AuthUser) {
     await this.get(id, user);
     const now = new Date();
-    await this.prisma.$transaction([
-      this.prisma.guest.update({ where: { id }, data: { deletedAt: now } }),
-      this.prisma.invitation.updateMany({
+    await this.prisma.$transaction(async (tx) => {
+      await tx.coupon.updateMany({
+        where: { guestId: id, status: 'ASSIGNED' },
+        data: { guestId: null, status: 'AVAILABLE', assignedAt: null, releasedAt: now },
+      });
+      await tx.guest.update({ where: { id }, data: { deletedAt: now } });
+      await tx.invitation.updateMany({
         where: { guestId: id, status: InvitationStatus.ACTIVE },
         data: { status: InvitationStatus.REVOKED, revokedAt: now },
-      }),
-    ]);
+      });
+    });
     this.audit.record({
       userId: user.sub,
       action: 'GUEST_DELETED',

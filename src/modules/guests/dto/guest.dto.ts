@@ -2,6 +2,7 @@ import { DietaryRequirement, GuestCategory, GuestSide, RsvpStatus } from '@prism
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayUnique,
   IsArray,
   IsBoolean,
   IsEmail,
@@ -47,9 +48,13 @@ export class UpdateGuestDto {
   @IsOptional() @IsString() tableNumber?: string;
   @IsOptional() @IsArray() @IsString({ each: true }) assignedSeats?: string[];
   @IsOptional() @IsString() notes?: string;
+  @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @IsBoolean() lodgingNeeded?: boolean;
 }
 export enum BulkGuestsMode {
   APPEND = 'append',
+  MERGE = 'merge',
   REPLACE = 'replace',
 }
 export class BulkCreateGuestsDto {
@@ -59,6 +64,37 @@ export class BulkCreateGuestsDto {
   @ValidateNested({ each: true })
   @Type(() => CreateGuestDto)
   guests!: CreateGuestDto[];
+}
+export class ImportGuestRowDto {
+  @IsOptional() @IsString() guestId?: string;
+  @IsOptional() @IsString() externalRef?: string;
+  @IsString() firstName!: string;
+  @IsString() lastName!: string;
+  @IsEnum(GuestSide) side!: GuestSide;
+  @IsOptional() @IsString() family?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(20) coupons?: number;
+  @IsOptional() @IsArray() @ArrayUnique() @IsInt({ each: true }) couponNumbers?: number[];
+  @IsOptional() @IsEnum(GuestCategory) category?: GuestCategory;
+  @IsOptional() @IsEnum(RsvpStatus) rsvpStatus?: RsvpStatus;
+  @IsOptional() @IsEnum(DietaryRequirement) dietary?: DietaryRequirement;
+  @IsOptional() @IsBoolean() plusOne?: boolean;
+  @IsOptional() @IsString() plusOneName?: string;
+  @IsOptional() @IsBoolean() isChild?: boolean;
+  @IsOptional() @IsString() tableNumber?: string;
+  @IsOptional() @IsString() phone?: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @IsBoolean() lodgingNeeded?: boolean;
+  @IsOptional() @IsString() notes?: string;
+}
+export class GuestImportDto {
+  @IsEnum(BulkGuestsMode) mode: BulkGuestsMode = BulkGuestsMode.MERGE;
+  @IsOptional() @IsBoolean() dryRun = false;
+  @IsOptional() @IsBoolean() autoAssignCoupons = true;
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @ValidateNested({ each: true })
+  @Type(() => ImportGuestRowDto)
+  guests!: ImportGuestRowDto[];
 }
 export class GuestQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;

@@ -11,6 +11,7 @@ import { assertCoupleAccess } from '../../common/utils/ownership';
 import { normalizePhoneNumber } from '../../common/utils/phone';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { CouponPoolService } from '../coupons/coupon-pool.service';
 import {
   CoupleQueryDto,
   CreateCoupleDto,
@@ -29,6 +30,7 @@ export class CouplesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly coupons: CouponPoolService,
   ) {}
   async list(q: CoupleQueryDto) {
     const where: Prisma.CoupleWhereInput = {
@@ -93,12 +95,22 @@ export class CouplesService {
       });
     }
     const passwordHash = await argon2.hash(accountPassword);
+    if (
+      couple.accessOpensAt &&
+      couple.accessClosesAt &&
+      couple.accessClosesAt <= couple.accessOpensAt
+    )
+      throw new BadRequestException({
+        code: 'INVALID_ACCESS_WINDOW',
+        message: "La fermeture du contrôle d'accès doit suivre son ouverture.",
+      });
     try {
       const result = await this.prisma.$transaction(async (tx) => {
         const created = await tx.couple.create({ data: couple });
         await tx.user.create({
           data: { email, phone, passwordHash, role: UserRole.COUPLE, coupleId: created.id },
         });
+        await this.coupons.ensurePool(created.id, created.guestQuota, tx);
         return created;
       });
       void this.audit.record({
@@ -202,7 +214,11 @@ export class CouplesService {
     }
     const { guestQuota, ...selfData } = dto;
     const data = user.role === UserRole.SUPER_ADMIN ? dto : selfData;
-    const result = await this.prisma.couple.update({ where: { id }, data });
+    const result = await this.prisma.$transaction(async (tx) => {
+      if (user.role === UserRole.SUPER_ADMIN && guestQuota !== undefined)
+        await this.coupons.resize(id, current.guestQuota, guestQuota, tx);
+      return tx.couple.update({ where: { id }, data });
+    });
     void this.audit.record({
       userId: user.sub,
       action: 'COUPLE_UPDATED',

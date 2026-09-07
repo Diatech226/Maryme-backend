@@ -15,3 +15,11 @@ polymorphe et peut désigner une valeur qui n'est pas un ObjectId.
 Les relations utilisent `NoAction`, requis par le connecteur MongoDB pour éviter
 l'émulation d'actions référentielles cycliques. Les suppressions restent donc
 contrôlées explicitement par les services et les soft deletes existants.
+
+## Numbered coupon pool and repeatable guest imports
+
+`Couple.guestQuota` defines the numbered pool `1..guestQuota`; it is independent from a guest's table number and `assignedSeats`. `CouponPoolService.ensurePool` is idempotent and is also the backfill entry point: `POST /couples/{coupleId}/coupons/reconcile` creates missing numbers, compares active guests' legacy `Guest.coupons` counts with assignments, and can allocate shortages with `autoAssignMissing=true`. It never changes seats, invitations, QR tokens, or check-ins.
+
+The normalized spreadsheet endpoint is `POST /couples/{coupleId}/guests/import`. Use `mode=merge` (the default), `dryRun=true` for preview, then repeat with `dryRun=false`. Matching order is Maryme guest ID, external reference, unique normalized email, unique normalized phone, then the normalized name/side/family tuple. Ambiguous imports are rejected atomically. Empty/absent merge fields preserve server data; the documented `__CLEAR__` value explicitly clears nullable strings. Spreadsheet presence/check-in and invitation-download columns are deliberately not accepted: those values are server-authoritative.
+
+`append` always creates, while destructive `replace` retains its check-in safety restriction. Merge updates the existing guest document, preserving its ID, invitations, QR validity, and check-in. Explicit `couponNumbers` are validated and never steal assigned or used numbers.

@@ -354,6 +354,47 @@ paths:
             '409': { $ref: '#/components/responses/Error' },
           },
       }
+  /couples/{coupleId}/guests/import:
+    post:
+      summary: Preview or commit an idempotent normalized spreadsheet merge
+      description: Empty fields preserve existing values; __CLEAR__ explicitly clears nullable text. Check-in and invitation-download fields are never imported.
+      responses:
+        {
+          '200': { description: Import preview/result },
+          '409': { $ref: '#/components/responses/Error' },
+        }
+  /guests/{guestId}/coupons:
+    put:
+      summary: Replace a guest numbered-coupon assignment
+      responses:
+        {
+          '200': { description: Assigned coupons },
+          '409': { $ref: '#/components/responses/Error' },
+        }
+  /couples/{coupleId}/coupons:
+    get:
+      summary: List numbered coupons
+      parameters:
+        - {
+            in: query,
+            name: status,
+            schema: { type: string, enum: [AVAILABLE, ASSIGNED, USED, VOID] },
+          }
+        - { in: query, name: guestId, schema: { type: string } }
+        - { in: query, name: number, schema: { type: integer } }
+      responses: { '200': { description: Coupon page } }
+  /couples/{coupleId}/coupons/summary:
+    get:
+      summary: Count available, assigned, used, and void coupons
+      responses: { '200': { description: Coupon pool summary } }
+  /couples/{coupleId}/coupons/reconcile:
+    post:
+      summary: Backfill and reconcile legacy guest coupon counts
+      responses:
+        {
+          '200': { description: Reconciliation report },
+          '409': { $ref: '#/components/responses/Error' },
+        }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }

@@ -21,6 +21,7 @@ import {
   BulkCreateGuestsDto,
   CreateGuestDto,
   GuestQueryDto,
+  GuestImportDto,
   UpdateGuestDto,
 } from './dto/guest.dto';
 import { GuestsService } from './guests.service';
@@ -51,6 +52,13 @@ export class GuestsController {
     @CurrentUser() u: AuthUser,
   ) {
     return this.s.bulk(id, d, u);
+  }
+  @Post('couples/:coupleId/guests/import') importGuests(
+    @Param('coupleId') id: string,
+    @Body() d: GuestImportDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.importGuests(id, d, u);
   }
   @Get('guests/:id') get(@Param('id') id: string, @CurrentUser() u: AuthUser) {
     return this.s.get(id, u);

@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InvitationStatus, Prisma } from '@prisma/client';
+import { CouponStatus, InvitationStatus, Prisma } from '@prisma/client';
 import { AuthUser } from '../../common/types/auth-user';
 import { assertCoupleAccess } from '../../common/utils/ownership';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -22,7 +22,10 @@ export class CheckInsService {
   private async resolve(token: string, user: AuthUser, deferUsedCheck = false) {
     const invitation = await this.prisma.invitation.findUnique({
       where: { tokenHash: this.invitations.hash(token) },
-      include: { guest: true, couple: true },
+      include: {
+        guest: { include: { couponNumbers: { select: { number: true } } } },
+        couple: true,
+      },
     });
     if (!invitation)
       throw new NotFoundException({ code: 'QR_INVALID', message: 'QR code invalide.' });
@@ -138,6 +141,7 @@ export class CheckInsService {
         tableNumber: invitation.guest.tableNumber,
         assignedSeats: invitation.guest.assignedSeats,
         coupons: invitation.guest.coupons,
+        couponNumbers: invitation.guest.couponNumbers.map((coupon) => coupon.number),
       },
       ...(exists
         ? {
@@ -215,7 +219,14 @@ export class CheckInsService {
             },
           },
         });
-        await tx.invitation.update({ where: { id: invitation.id }, data: { usedAt: new Date() } });
+        await tx.invitation.update({
+          where: { id: invitation.id },
+          data: { usedAt: checkIn.checkedInAt },
+        });
+        await tx.coupon.updateMany({
+          where: { guestId: invitation.guestId, status: CouponStatus.ASSIGNED },
+          data: { status: CouponStatus.USED, usedAt: checkIn.checkedInAt },
+        });
         return checkIn;
       });
       void this.audit.record({
