@@ -63,7 +63,9 @@ describe('SUPER_ADMIN bootstrap (e2e)', () => {
     expect(await argon2.verify(second.user.passwordHash, base.SUPER_ADMIN_PASSWORD)).toBe(false);
     expect(await argon2.verify(second.user.passwordHash, changed.SUPER_ADMIN_PASSWORD)).toBe(true);
 
-    const rotatedSession = await prisma.refreshSession.findUniqueOrThrow({ where: { id: session.id } });
+    const rotatedSession = await prisma.refreshSession.findUniqueOrThrow({
+      where: { id: session.id },
+    });
     expect(rotatedSession.revokedAt).toBeInstanceOf(Date);
   });
 

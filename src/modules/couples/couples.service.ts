@@ -57,43 +57,43 @@ export class CouplesService {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       const target = String(error.meta?.target ?? '');
       if (target.includes('phone')) {
-        throw new ConflictException('Ce numéro de téléphone est déjà associé à un compte.');
+        throw new ConflictException({
+          code: 'ACCOUNT_PHONE_ALREADY_EXISTS',
+          message: 'Ce numéro de téléphone est déjà associé à un compte.',
+        });
       }
-      throw new ConflictException('Cet email est déjà associé à un compte.');
+      throw new ConflictException({
+        code: 'ACCOUNT_EMAIL_ALREADY_EXISTS',
+        message: 'Cet email est déjà associé à un compte.',
+      });
     }
     throw error;
   }
 
   async create(dto: CreateCoupleDto, actor: AuthUser) {
     const { accountEmail, accountPhone, accountPassword, ...couple } = dto;
-    if (Boolean(accountEmail) !== Boolean(accountPassword)) {
-      throw new BadRequestException('accountEmail and accountPassword must be provided together');
+    if (!accountEmail || !accountPhone || !accountPassword) {
+      throw new BadRequestException(
+        'Email, téléphone et mot de passe du compte sont obligatoires.',
+      );
     }
-    if (accountPhone && !accountEmail) {
-      throw new BadRequestException('accountPhone requires accountEmail and accountPassword');
-    }
-    const email = accountEmail?.trim().toLowerCase();
-    let phone: string | undefined;
+    const email = accountEmail.trim().toLowerCase();
+    let phone: string;
     try {
-      phone = accountPhone ? normalizePhoneNumber(accountPhone) : undefined;
+      phone = normalizePhoneNumber(accountPhone);
     } catch (error) {
-      throw new BadRequestException((error as Error).message);
+      throw new BadRequestException({
+        code: 'INVALID_PHONE_NUMBER',
+        message: (error as Error).message,
+      });
     }
-    const passwordHash = accountPassword ? await argon2.hash(accountPassword) : undefined;
+    const passwordHash = await argon2.hash(accountPassword);
     try {
       const result = await this.prisma.$transaction(async (tx) => {
         const created = await tx.couple.create({ data: couple });
-        if (email && passwordHash) {
-          await tx.user.create({
-            data: {
-              email,
-              phone,
-              passwordHash,
-              role: UserRole.COUPLE,
-              coupleId: created.id,
-            },
-          });
-        }
+        await tx.user.create({
+          data: { email, phone, passwordHash, role: UserRole.COUPLE, coupleId: created.id },
+        });
         return created;
       });
       void this.audit.record({
@@ -143,7 +143,10 @@ export class CouplesService {
     try {
       phone = dto.phone === undefined ? undefined : normalizePhoneNumber(dto.phone);
     } catch (error) {
-      throw new BadRequestException((error as Error).message);
+      throw new BadRequestException({
+        code: 'INVALID_PHONE_NUMBER',
+        message: (error as Error).message,
+      });
     }
     try {
       const updated = await this.prisma.user.update({

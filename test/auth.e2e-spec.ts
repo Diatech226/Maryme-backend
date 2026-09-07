@@ -15,6 +15,7 @@ describe('Auth session (e2e)', () => {
     await prisma.user.create({
       data: {
         email: 'admin.e2e@maryme.test',
+        phone: '+22670000011',
         passwordHash: await argon2.hash('AdminPassword123!'),
         role: UserRole.SUPER_ADMIN,
       },
@@ -46,5 +47,17 @@ describe('Auth session (e2e)', () => {
       .set('Authorization', `Bearer ${refresh.body.accessToken}`)
       .expect(200)
       .expect(({ body }) => expect(body.data.email).toBe('admin.e2e@maryme.test'));
+  });
+
+  it('rejects an inactive account with a stable code despite a correct password', async () => {
+    await prisma.user.update({
+      where: { email: 'admin.e2e@maryme.test' },
+      data: { isActive: false },
+    });
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'admin.e2e@maryme.test', password: 'AdminPassword123!' })
+      .expect(403)
+      .expect(({ body }) => expect(body.code).toBe('ACCOUNT_INACTIVE'));
   });
 });
