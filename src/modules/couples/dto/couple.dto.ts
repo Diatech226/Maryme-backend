@@ -33,6 +33,8 @@ export class CreateCoupleDto {
   accountPassword!: string;
   @IsOptional() @IsArray() @IsString({ each: true }) groomFamilies?: string[];
   @IsOptional() @IsArray() @IsString({ each: true }) brideFamilies?: string[];
+  @IsOptional() @Type(() => Date) @IsDate() accessOpensAt?: Date;
+  @IsOptional() @Type(() => Date) @IsDate() accessClosesAt?: Date;
 }
 export class UpdateCoupleDto {
   @IsOptional() @IsString() partner1?: string;

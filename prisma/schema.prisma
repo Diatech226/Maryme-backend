@@ -61,6 +61,13 @@ enum CheckInStatus {
   REJECTED
 }
 
+enum CouponStatus {
+  AVAILABLE
+  ASSIGNED
+  USED
+  VOID
+}
+
 model User {
   id               String           @id @default(auto()) @map("_id") @db.ObjectId
   email            String           @unique
@@ -111,6 +118,7 @@ model Couple {
   guests           Guest[]
   invitations      Invitation[]
   checkIns         CheckIn[]
+  coupons          Coupon[]
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   deletedAt        DateTime?
@@ -141,9 +149,11 @@ model Guest {
   email              String?
   lodgingNeeded      Boolean            @default(false)
   notes              String?
+  externalRef        String?
   invitationSentDate DateTime?
   invitations        Invitation[]
   checkIn            CheckIn?
+  couponNumbers      Coupon[]
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
   deletedAt          DateTime?
@@ -151,6 +161,26 @@ model Guest {
   @@index([coupleId])
   @@index([rsvpStatus])
   @@index([family])
+  @@index([coupleId, externalRef])
+}
+
+model Coupon {
+  id         String       @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId   String       @db.ObjectId
+  couple     Couple       @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  guestId    String?      @db.ObjectId
+  guest      Guest?       @relation(fields: [guestId], references: [id], onDelete: NoAction)
+  number     Int
+  status     CouponStatus @default(AVAILABLE)
+  assignedAt DateTime?
+  usedAt     DateTime?
+  releasedAt DateTime?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  @@unique([coupleId, number])
+  @@index([coupleId, status])
+  @@index([guestId])
 }
 
 model Invitation {

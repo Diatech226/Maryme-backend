@@ -1,2 +1,40 @@
-import { Module } from '@nestjs/common'; import { ConfigModule } from '@nestjs/config'; import { APP_GUARD } from '@nestjs/core'; import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler'; import appConfig from './config/app.config'; import authConfig from './config/auth.config'; import databaseConfig from './config/database.config'; import { envValidationSchema } from './config/env.validation'; import { PrismaModule } from './prisma/prisma.module'; import { AuditModule } from './modules/audit/audit.module'; import { AuthModule } from './modules/auth/auth.module'; import { CheckInsModule } from './modules/checkins/checkins.module'; import { CouplesModule } from './modules/couples/couples.module'; import { GuestsModule } from './modules/guests/guests.module'; import { HealthModule } from './modules/health/health.module'; import { InvitationsModule } from './modules/invitations/invitations.module'; import { UsersModule } from './modules/users/users.module';
-@Module({ imports: [ConfigModule.forRoot({ isGlobal: true, validationSchema: envValidationSchema, load: [appConfig, authConfig, databaseConfig] }), ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]), PrismaModule, AuditModule, AuthModule, UsersModule, CouplesModule, GuestsModule, InvitationsModule, CheckInsModule, HealthModule], providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }] }) export class AppModule {}
+import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import appConfig from './config/app.config';
+import authConfig from './config/auth.config';
+import databaseConfig from './config/database.config';
+import { envValidationSchema } from './config/env.validation';
+import { PrismaModule } from './prisma/prisma.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { AuthModule } from './modules/auth/auth.module';
+import { CheckInsModule } from './modules/checkins/checkins.module';
+import { CouplesModule } from './modules/couples/couples.module';
+import { GuestsModule } from './modules/guests/guests.module';
+import { HealthModule } from './modules/health/health.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
+import { UsersModule } from './modules/users/users.module';
+import { CouponsModule } from './modules/coupons/coupons.module';
+@Module({
+  imports: [
+    ConfigModule.forRoot({
+      isGlobal: true,
+      validationSchema: envValidationSchema,
+      load: [appConfig, authConfig, databaseConfig],
+    }),
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
+    PrismaModule,
+    AuditModule,
+    AuthModule,
+    UsersModule,
+    CouplesModule,
+    GuestsModule,
+    InvitationsModule,
+    CheckInsModule,
+    CouponsModule,
+    HealthModule,
+  ],
+  providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
+})
+export class AppModule {}
