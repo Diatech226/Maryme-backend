@@ -50,6 +50,8 @@ export class UpdateCoupleDto {
   @IsOptional() @IsString() churchTime?: string;
   @IsOptional() @IsString() cityHallVenue?: string;
   @IsOptional() @IsString() cityHallTime?: string;
+  @IsOptional() @Type(() => Date) @IsDate() accessOpensAt?: Date;
+  @IsOptional() @Type(() => Date) @IsDate() accessClosesAt?: Date;
 }
 export class CoupleQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;

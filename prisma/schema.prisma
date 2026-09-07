@@ -10,6 +10,7 @@ datasource db {
 enum UserRole {
   SUPER_ADMIN
   COUPLE
+  ACCESS_AGENT
 }
 
 enum CoupleStatus {
@@ -113,6 +114,8 @@ model Couple {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   deletedAt        DateTime?
+  accessOpensAt    DateTime?
+  accessClosesAt   DateTime?
 
   @@index([status])
 }

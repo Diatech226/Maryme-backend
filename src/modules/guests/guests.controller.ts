@@ -1,2 +1,68 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from '@nestjs/common'; import { ApiBearerAuth, ApiTags } from '@nestjs/swagger'; import { CurrentUser } from '../../common/decorators/current-user.decorator'; import { AuthUser } from '../../common/types/auth-user'; import { JwtAuthGuard } from '../auth/jwt-auth.guard'; import { BulkCreateGuestsDto, CreateGuestDto, GuestQueryDto, UpdateGuestDto } from './dto/guest.dto'; import { GuestsService } from './guests.service';
-@ApiTags('Guests') @ApiBearerAuth() @UseGuards(JwtAuthGuard) @Controller() export class GuestsController{constructor(private readonly s:GuestsService){} @Get('couples/:coupleId/guests')list(@Param('coupleId')id:string,@Query()q:GuestQueryDto,@CurrentUser()u:AuthUser){return this.s.list(id,q,u)} @Post('couples/:coupleId/guests')create(@Param('coupleId')id:string,@Body()d:CreateGuestDto,@CurrentUser()u:AuthUser){return this.s.create(id,d,u)} @Post('couples/:coupleId/guests/bulk')bulk(@Param('coupleId')id:string,@Body()d:BulkCreateGuestsDto,@CurrentUser()u:AuthUser){return this.s.bulk(id,d,u)} @Get('guests/:id')get(@Param('id')id:string,@CurrentUser()u:AuthUser){return this.s.get(id,u)} @Patch('guests/:id')update(@Param('id')id:string,@Body()d:UpdateGuestDto,@CurrentUser()u:AuthUser){return this.s.update(id,d,u)} @Delete('guests/:id')@HttpCode(204)remove(@Param('id')id:string,@CurrentUser()u:AuthUser){return this.s.remove(id,u)}}
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
+import { UserRole } from '@prisma/client';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
+import { Roles } from '../../common/decorators/roles.decorator';
+import { RolesGuard } from '../../common/guards/roles.guard';
+import { AuthUser } from '../../common/types/auth-user';
+import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import {
+  BulkCreateGuestsDto,
+  CreateGuestDto,
+  GuestQueryDto,
+  UpdateGuestDto,
+} from './dto/guest.dto';
+import { GuestsService } from './guests.service';
+@ApiTags('Guests')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.SUPER_ADMIN, UserRole.COUPLE)
+@Controller()
+export class GuestsController {
+  constructor(private readonly s: GuestsService) {}
+  @Get('couples/:coupleId/guests') list(
+    @Param('coupleId') id: string,
+    @Query() q: GuestQueryDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.list(id, q, u);
+  }
+  @Post('couples/:coupleId/guests') create(
+    @Param('coupleId') id: string,
+    @Body() d: CreateGuestDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.create(id, d, u);
+  }
+  @Post('couples/:coupleId/guests/bulk') bulk(
+    @Param('coupleId') id: string,
+    @Body() d: BulkCreateGuestsDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.bulk(id, d, u);
+  }
+  @Get('guests/:id') get(@Param('id') id: string, @CurrentUser() u: AuthUser) {
+    return this.s.get(id, u);
+  }
+  @Patch('guests/:id') update(
+    @Param('id') id: string,
+    @Body() d: UpdateGuestDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.update(id, d, u);
+  }
+  @Delete('guests/:id') @HttpCode(204) remove(@Param('id') id: string, @CurrentUser() u: AuthUser) {
+    return this.s.remove(id, u);
+  }
+}
