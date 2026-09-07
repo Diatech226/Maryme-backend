@@ -28,6 +28,13 @@ export class InvitationsController {
   ) {
     return this.s.list(id, u);
   }
+  @Post('invitations/:id/regenerate') regenerate(
+    @Param('id') id: string,
+    @Body() dto: CreateInvitationDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.s.regenerate(id, dto, user);
+  }
   @Post('invitations/:id/revoke') revoke(@Param('id') id: string, @CurrentUser() u: AuthUser) {
     return this.s.revoke(id, u);
   }

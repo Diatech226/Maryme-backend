@@ -51,6 +51,12 @@ export class InvitationsService {
     const { tokenHash: _hash, ...safe } = invitation;
     return { ...safe, token, qrPayload: { version: 1, token } };
   }
+  async regenerate(id: string, dto: CreateInvitationDto, user: AuthUser) {
+    const invitation = await this.prisma.invitation.findUnique({ where: { id } });
+    if (!invitation) throw new NotFoundException('Invitation not found');
+    assertCoupleAccess(user, invitation.coupleId);
+    return this.generate(invitation.guestId, dto, user);
+  }
   async list(guestId: string, user: AuthUser) {
     const guest = await this.prisma.guest.findFirst({
       where: { id: guestId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },

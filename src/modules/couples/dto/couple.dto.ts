@@ -52,6 +52,14 @@ export class UpdateCoupleDto {
   @IsOptional() @IsString() churchTime?: string;
   @IsOptional() @IsString() cityHallVenue?: string;
   @IsOptional() @IsString() cityHallTime?: string;
+  @IsOptional() @IsString() partner1FullName?: string;
+  @IsOptional() @IsString() partner2FullName?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) groomFamilies?: string[];
+  @IsOptional() @IsArray() @IsString({ each: true }) brideFamilies?: string[];
+  @IsOptional() @IsString() invitationIntroText?: string;
+  @IsOptional() @IsString() invitationFooterText?: string;
+  @IsOptional() @IsString() dressCode?: string;
+  @IsOptional() @IsString() rsvpMessage?: string;
   @IsOptional() @Type(() => Date) @IsDate() accessOpensAt?: Date;
   @IsOptional() @Type(() => Date) @IsDate() accessClosesAt?: Date;
 }
