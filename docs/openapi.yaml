@@ -613,3 +613,29 @@ components:
             details: { type: object },
           },
       }
+
+# Invitation design/artifact API (all non-public operations require SUPER_ADMIN or the owning COUPLE).
+x-maryme-invitation-api:
+  invitationDesigns:
+    paths:
+      - GET,POST /couples/{coupleId}/invitation-designs
+      - GET,PATCH,DELETE /couples/{coupleId}/invitation-designs/{designId}
+      - POST /couples/{coupleId}/invitation-designs/{designId}/activate
+      - POST multipart/form-data /couples/{coupleId}/invitation-designs/{designId}/background
+    modes: [GENERATED, UPLOADED]
+    uploads: [image/png, image/jpeg, image/webp, application/pdf]
+    overlayCoordinates: normalized 0..1
+  artifacts:
+    paths:
+      - POST multipart/form-data /invitations/{invitationId}/artifact
+      - GET /guests/{guestId}/invitation-artifacts
+      - GET /invitation-artifacts/{artifactId}/download?format=image|pdf
+    stale: Guest.updatedAt or InvitationDesign.updatedAt is newer than the generation snapshot
+    persisted: true
+  sharing:
+    paths:
+      - POST /invitation-artifacts/{artifactId}/share-link
+      - GET /public/invitations/share/{opaqueToken}
+      - POST /invitation-share-links/{id}/revoke
+    tokenStorage: SHA-256 hash only
+    expiration: accessClosesAt, otherwise weddingDate plus one day, capped by SHARE_LINK_MAX_DAYS

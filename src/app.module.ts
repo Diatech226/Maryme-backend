@@ -16,6 +16,9 @@ import { HealthModule } from './modules/health/health.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { UsersModule } from './modules/users/users.module';
 import { CouponsModule } from './modules/coupons/coupons.module';
+import { StorageModule } from './modules/storage/storage.module';
+import { InvitationDesignsModule } from './modules/invitation-designs/invitation-designs.module';
+import { InvitationArtifactsModule } from './modules/invitation-artifacts/invitation-artifacts.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -25,12 +28,15 @@ import { CouponsModule } from './modules/coupons/coupons.module';
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }]),
     PrismaModule,
+    StorageModule,
     AuditModule,
     AuthModule,
     UsersModule,
     CouplesModule,
     GuestsModule,
     InvitationsModule,
+    InvitationDesignsModule,
+    InvitationArtifactsModule,
     CheckInsModule,
     CouponsModule,
     HealthModule,

@@ -55,6 +55,11 @@ enum InvitationStatus {
   EXPIRED
 }
 
+enum InvitationDesignMode {
+  GENERATED
+  UPLOADED
+}
+
 enum CheckInStatus {
   VALID
   DUPLICATE
@@ -90,73 +95,80 @@ model User {
 }
 
 model Couple {
-  id               String       @id @default(auto()) @map("_id") @db.ObjectId
-  partner1         String
-  partner2         String
-  partner1FullName String?
-  partner2FullName String?
-  weddingDate      DateTime
-  location         String
-  email            String
-  phone            String
-  status           CoupleStatus @default(PENDING)
-  guestQuota       Int
-  requestDate      DateTime     @default(now())
-  authorizedAt     DateTime?
-  notes            String?
-  budgetEstimate   Int?
-  bibleVerse       String?
-  lunchVenue       String?
-  lunchTime        String?
-  churchVenue      String?
-  churchTime       String?
-  cityHallVenue    String?
-  cityHallTime     String?
-  groomFamilies    String[]     @default([])
-  brideFamilies    String[]     @default([])
-  users            User[]
-  guests           Guest[]
-  invitations      Invitation[]
-  checkIns         CheckIn[]
-  coupons          Coupon[]
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
-  deletedAt        DateTime?
-  accessOpensAt    DateTime?
-  accessClosesAt   DateTime?
+  id                   String               @id @default(auto()) @map("_id") @db.ObjectId
+  partner1             String
+  partner2             String
+  partner1FullName     String?
+  partner2FullName     String?
+  weddingDate          DateTime
+  location             String
+  email                String
+  phone                String
+  status               CoupleStatus         @default(PENDING)
+  guestQuota           Int
+  requestDate          DateTime             @default(now())
+  authorizedAt         DateTime?
+  notes                String?
+  budgetEstimate       Int?
+  bibleVerse           String?
+  lunchVenue           String?
+  lunchTime            String?
+  churchVenue          String?
+  churchTime           String?
+  cityHallVenue        String?
+  cityHallTime         String?
+  groomFamilies        String[]             @default([])
+  brideFamilies        String[]             @default([])
+  users                User[]
+  guests               Guest[]
+  invitations          Invitation[]
+  checkIns             CheckIn[]
+  coupons              Coupon[]
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  deletedAt            DateTime?
+  accessOpensAt        DateTime?
+  accessClosesAt       DateTime?
+  invitationIntroText  String?
+  invitationFooterText String?
+  dressCode            String?
+  rsvpMessage          String?
+  invitationDesigns    InvitationDesign[]
+  invitationArtifacts  InvitationArtifact[]
 
   @@index([status])
 }
 
 model Guest {
-  id                 String             @id @default(auto()) @map("_id") @db.ObjectId
-  coupleId           String             @db.ObjectId
-  couple             Couple             @relation(fields: [coupleId], references: [id], onDelete: NoAction)
-  firstName          String
-  lastName           String
-  side               GuestSide
-  family             String?
-  coupons            Int                @default(1)
-  category           GuestCategory
-  rsvpStatus         RsvpStatus         @default(PENDING)
-  dietary            DietaryRequirement @default(STANDARD)
-  plusOne            Boolean            @default(false)
-  plusOneName        String?
-  isChild            Boolean            @default(false)
-  tableNumber        String?
-  assignedSeats      String[]           @default([])
-  phone              String?
-  email              String?
-  lodgingNeeded      Boolean            @default(false)
-  notes              String?
-  externalRef        String?
-  invitationSentDate DateTime?
-  invitations        Invitation[]
-  checkIn            CheckIn?
-  couponNumbers      Coupon[]
-  createdAt          DateTime           @default(now())
-  updatedAt          DateTime           @updatedAt
-  deletedAt          DateTime?
+  id                  String               @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId            String               @db.ObjectId
+  couple              Couple               @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  firstName           String
+  lastName            String
+  side                GuestSide
+  family              String?
+  coupons             Int                  @default(1)
+  category            GuestCategory
+  rsvpStatus          RsvpStatus           @default(PENDING)
+  dietary             DietaryRequirement   @default(STANDARD)
+  plusOne             Boolean              @default(false)
+  plusOneName         String?
+  isChild             Boolean              @default(false)
+  tableNumber         String?
+  assignedSeats       String[]             @default([])
+  phone               String?
+  email               String?
+  lodgingNeeded       Boolean              @default(false)
+  notes               String?
+  externalRef         String?
+  invitationSentDate  DateTime?
+  invitations         Invitation[]
+  checkIn             CheckIn?
+  couponNumbers       Coupon[]
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  deletedAt           DateTime?
+  invitationArtifacts InvitationArtifact[]
 
   @@index([coupleId])
   @@index([rsvpStatus])
@@ -184,23 +196,88 @@ model Coupon {
 }
 
 model Invitation {
-  id          String           @id @default(auto()) @map("_id") @db.ObjectId
-  coupleId    String           @db.ObjectId
-  couple      Couple           @relation(fields: [coupleId], references: [id], onDelete: NoAction)
-  guestId     String           @db.ObjectId
-  guest       Guest            @relation(fields: [guestId], references: [id], onDelete: NoAction)
-  tokenHash   String           @unique
-  status      InvitationStatus @default(ACTIVE)
-  generatedAt DateTime         @default(now())
+  id          String               @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId    String               @db.ObjectId
+  couple      Couple               @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  guestId     String               @db.ObjectId
+  guest       Guest                @relation(fields: [guestId], references: [id], onDelete: NoAction)
+  tokenHash   String               @unique
+  status      InvitationStatus     @default(ACTIVE)
+  generatedAt DateTime             @default(now())
   expiresAt   DateTime?
   revokedAt   DateTime?
   usedAt      DateTime?
   checkIns    CheckIn[]
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  artifacts   InvitationArtifact[]
 
   @@index([guestId])
   @@index([coupleId])
+}
+
+model InvitationDesign {
+  id                  String               @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId            String               @db.ObjectId
+  couple              Couple               @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  name                String
+  mode                InvitationDesignMode
+  templateKey         String?
+  backgroundObjectKey String?
+  backgroundMimeType  String?
+  canvasWidth         Int?
+  canvasHeight        Int?
+  overlayConfig       Json
+  contentConfig       Json?
+  isActive            Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  artifacts           InvitationArtifact[]
+
+  @@index([coupleId])
+  @@index([coupleId, isActive])
+}
+
+model InvitationArtifact {
+  id               String                @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId         String                @db.ObjectId
+  couple           Couple                @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  guestId          String                @db.ObjectId
+  guest            Guest                 @relation(fields: [guestId], references: [id], onDelete: NoAction)
+  invitationId     String                @db.ObjectId
+  invitation       Invitation            @relation(fields: [invitationId], references: [id], onDelete: NoAction)
+  designId         String                @db.ObjectId
+  design           InvitationDesign      @relation(fields: [designId], references: [id], onDelete: NoAction)
+  imageObjectKey   String?
+  pdfObjectKey     String?
+  imageMimeType    String?
+  pdfMimeType      String?
+  guestUpdatedAt   DateTime
+  designUpdatedAt  DateTime
+  generatedAt      DateTime              @default(now())
+  lastDownloadedAt DateTime?
+  lastShareAt      DateTime?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  shareLinks       InvitationShareLink[]
+
+  @@index([coupleId])
+  @@index([guestId])
+  @@index([invitationId])
+}
+
+model InvitationShareLink {
+  id         String             @id @default(auto()) @map("_id") @db.ObjectId
+  artifactId String             @db.ObjectId
+  artifact   InvitationArtifact @relation(fields: [artifactId], references: [id], onDelete: NoAction)
+  tokenHash  String             @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime           @default(now())
+  openedAt   DateTime?
+
+  @@index([artifactId])
+  @@index([expiresAt])
 }
 
 model CheckIn {
