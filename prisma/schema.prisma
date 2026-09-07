@@ -185,6 +185,7 @@ model CheckIn {
   operatorId   String?       @db.ObjectId
   operator     User?         @relation("CheckInOperator", fields: [operatorId], references: [id], onDelete: NoAction)
   deviceId     String?
+  stationName  String?
   status       CheckInStatus @default(VALID)
   metadata     Json?
   createdAt    DateTime      @default(now())

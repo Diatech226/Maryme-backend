@@ -9,5 +9,12 @@ export class CreateAccessAgentDto {
 }
 
 export class UpdateAccessAgentDto {
+  @IsOptional() @IsString() @MaxLength(100) name?: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @IsString() phone?: string;
   @IsBoolean() @IsOptional() isActive?: boolean;
+}
+
+export class ResetAccessAgentPasswordDto {
+  @IsString() @MinLength(COUPLE_PASSWORD_MIN_LENGTH) password!: string;
 }

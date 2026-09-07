@@ -98,19 +98,26 @@ export class CheckInsService {
               coupons: true,
             },
           },
-          operator: { select: { id: true, email: true, firstName: true, lastName: true } },
+          operator: { select: { firstName: true, lastName: true } },
         },
       }),
       this.prisma.checkIn.count({ where }),
     ]);
     return {
-      data,
+      data: data.map(({ operator, ...checkIn }) => ({
+        ...checkIn,
+        operatorName:
+          [operator?.firstName, operator?.lastName].filter(Boolean).join(' ') || undefined,
+      })),
       meta: { page: q.page, limit: q.limit, total, totalPages: Math.ceil(total / q.limit) },
     };
   }
   async validate(token: string, user: AuthUser) {
-    const invitation = await this.resolve(token, user);
-    const exists = await this.prisma.checkIn.findUnique({ where: { guestId: invitation.guestId } });
+    const invitation = await this.resolve(token, user, true);
+    const exists = await this.prisma.checkIn.findUnique({
+      where: { guestId: invitation.guestId },
+      include: { operator: { select: { firstName: true, lastName: true } } },
+    });
     void this.audit.record({
       userId: user.sub,
       action: 'QR_VALIDATED',
@@ -131,10 +138,19 @@ export class CheckInsService {
         tableNumber: invitation.guest.tableNumber,
         assignedSeats: invitation.guest.assignedSeats,
         coupons: invitation.guest.coupons,
-        plusOne: invitation.guest.plusOne,
-        isChild: invitation.guest.isChild,
       },
-      ...(exists ? { checkedInAt: exists.checkedInAt, deviceId: exists.deviceId } : {}),
+      ...(exists
+        ? {
+            checkIn: {
+              checkedInAt: exists.checkedInAt,
+              deviceId: exists.deviceId,
+              stationName: exists.stationName,
+              operatorName:
+                [exists.operator?.firstName, exists.operator?.lastName].filter(Boolean).join(' ') ||
+                undefined,
+            },
+          }
+        : {}),
       warning:
         invitation.guest.rsvpStatus === 'PENDING'
           ? 'RSVP_PENDING'
@@ -173,8 +189,17 @@ export class CheckInsService {
             invitationId: invitation.id,
             operatorId: user.sub,
             deviceId: dto.deviceId,
+            stationName: dto.stationName,
           },
-          include: {
+          select: {
+            id: true,
+            guestId: true,
+            coupleId: true,
+            checkedInAt: true,
+            deviceId: true,
+            stationName: true,
+            operatorId: true,
+            status: true,
             guest: {
               select: {
                 id: true,
@@ -183,6 +208,9 @@ export class CheckInsService {
                 tableNumber: true,
                 assignedSeats: true,
                 coupons: true,
+                side: true,
+                category: true,
+                rsvpStatus: true,
               },
             },
           },
@@ -200,6 +228,7 @@ export class CheckInsService {
           guestId: invitation.guestId,
           invitationId: invitation.id,
           deviceId: dto.deviceId,
+          stationName: dto.stationName,
         },
       });
       return result;

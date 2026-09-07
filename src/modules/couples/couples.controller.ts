@@ -25,7 +25,11 @@ import {
   UpdateCoupleAccountDto,
   UpdateCoupleDto,
 } from './dto/couple.dto';
-import { CreateAccessAgentDto, UpdateAccessAgentDto } from './dto/access-agent.dto';
+import {
+  CreateAccessAgentDto,
+  ResetAccessAgentPasswordDto,
+  UpdateAccessAgentDto,
+} from './dto/access-agent.dto';
 
 @ApiTags('Couples')
 @ApiBearerAuth()
@@ -113,6 +117,12 @@ export class CouplesController {
     return this.service.createAccessAgent(id, dto, user);
   }
 
+  @Get(':id/access-agents')
+  @Roles(UserRole.SUPER_ADMIN)
+  listAccessAgents(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.service.listAccessAgents(id, user);
+  }
+
   @Patch(':id/access-agents/:agentId')
   @Roles(UserRole.SUPER_ADMIN)
   updateAccessAgent(
@@ -122,5 +132,16 @@ export class CouplesController {
     @CurrentUser() user: AuthUser,
   ) {
     return this.service.updateAccessAgent(id, agentId, dto, user);
+  }
+
+  @Post(':id/access-agents/:agentId/reset-password')
+  @Roles(UserRole.SUPER_ADMIN)
+  resetAccessAgentPassword(
+    @Param('id') id: string,
+    @Param('agentId') agentId: string,
+    @Body() dto: ResetAccessAgentPasswordDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.resetAccessAgentPassword(id, agentId, dto, user);
   }
 }
