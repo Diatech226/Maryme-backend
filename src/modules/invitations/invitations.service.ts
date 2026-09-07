@@ -26,10 +26,12 @@ export class InvitationsService {
     const token = randomBytes(32).toString('base64url');
     const now = new Date();
     const invitation = await this.prisma.$transaction(async (tx) => {
-      await tx.invitation.updateMany({
-        where: { guestId, status: InvitationStatus.ACTIVE },
-        data: { status: InvitationStatus.REVOKED, revokedAt: now },
-      });
+      if (dto.revokePrevious) {
+        await tx.invitation.updateMany({
+          where: { guestId, status: InvitationStatus.ACTIVE },
+          data: { status: InvitationStatus.REVOKED, revokedAt: now },
+        });
+      }
       return tx.invitation.create({
         data: {
           guestId,
@@ -44,6 +46,7 @@ export class InvitationsService {
       action: 'INVITATION_GENERATED',
       entityType: 'Invitation',
       entityId: invitation.id,
+      metadata: { coupleId: guest.coupleId, guestId, revokePrevious: dto.revokePrevious },
     });
     const { tokenHash: _hash, ...safe } = invitation;
     return { ...safe, token, qrPayload: { version: 1, token } };
@@ -80,7 +83,7 @@ export class InvitationsService {
     });
     this.audit.record({
       userId: user.sub,
-      action: 'INVITATION_REVOKED',
+      action: 'QR_REVOKED',
       entityType: 'Invitation',
       entityId: id,
     });

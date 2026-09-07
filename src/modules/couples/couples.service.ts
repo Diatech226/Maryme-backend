@@ -18,6 +18,7 @@ import {
   UpdateCoupleAccountDto,
   UpdateCoupleDto,
 } from './dto/couple.dto';
+import { CreateAccessAgentDto, UpdateAccessAgentDto } from './dto/access-agent.dto';
 
 @Injectable()
 export class CouplesService {
@@ -227,5 +228,84 @@ export class CouplesService {
       entityType: 'Couple',
       entityId: id,
     });
+  }
+
+  async createAccessAgent(id: string, dto: CreateAccessAgentDto, actor: AuthUser) {
+    await this.get(id, actor);
+    let phone: string;
+    try {
+      phone = normalizePhoneNumber(dto.phone);
+    } catch (error) {
+      throw new BadRequestException({
+        code: 'INVALID_PHONE_NUMBER',
+        message: (error as Error).message,
+      });
+    }
+    const parts = dto.name.trim().split(/\s+/);
+    try {
+      const agent = await this.prisma.user.create({
+        data: {
+          email: dto.email.trim().toLowerCase(),
+          phone,
+          passwordHash: await argon2.hash(dto.password),
+          role: UserRole.ACCESS_AGENT,
+          coupleId: id,
+          firstName: parts.shift() || dto.name.trim(),
+          lastName: parts.join(' ') || null,
+        },
+      });
+      void this.audit.record({
+        userId: actor.sub,
+        action: 'ACCESS_AGENT_CREATED',
+        entityType: 'User',
+        entityId: agent.id,
+        metadata: { coupleId: id },
+      });
+      return {
+        id: agent.id,
+        email: agent.email,
+        phone: agent.phone,
+        role: agent.role,
+        coupleId: agent.coupleId,
+        firstName: agent.firstName,
+        lastName: agent.lastName,
+        isActive: agent.isActive,
+      };
+    } catch (error) {
+      this.duplicateAccountError(error);
+    }
+  }
+
+  async updateAccessAgent(id: string, agentId: string, dto: UpdateAccessAgentDto, actor: AuthUser) {
+    await this.get(id, actor);
+    const agent = await this.prisma.user.findFirst({
+      where: { id: agentId, coupleId: id, role: UserRole.ACCESS_AGENT },
+    });
+    if (!agent) throw new NotFoundException('Agent de contrôle introuvable.');
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id: agentId },
+        data: { isActive: dto.isActive },
+      });
+      if (dto.isActive === false)
+        await tx.refreshSession.updateMany({
+          where: { userId: agentId, OR: [{ revokedAt: null }, { revokedAt: { isSet: false } }] },
+          data: { revokedAt: new Date() },
+        });
+      return user;
+    });
+    void this.audit.record({
+      userId: actor.sub,
+      action: dto.isActive === false ? 'ACCESS_AGENT_DISABLED' : 'ACCESS_AGENT_UPDATED',
+      entityType: 'User',
+      entityId: agentId,
+      metadata: { coupleId: id },
+    });
+    return {
+      id: updated.id,
+      role: updated.role,
+      coupleId: updated.coupleId,
+      isActive: updated.isActive,
+    };
   }
 }

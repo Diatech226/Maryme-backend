@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { InvitationStatus, Prisma } from '@prisma/client';
 import { assertCoupleAccess } from '../../common/utils/ownership';
 import { AuthUser } from '../../common/types/auth-user';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -137,7 +137,14 @@ export class GuestsService {
   }
   async remove(id: string, user: AuthUser) {
     await this.get(id, user);
-    await this.prisma.guest.update({ where: { id }, data: { deletedAt: new Date() } });
+    const now = new Date();
+    await this.prisma.$transaction([
+      this.prisma.guest.update({ where: { id }, data: { deletedAt: now } }),
+      this.prisma.invitation.updateMany({
+        where: { guestId: id, status: InvitationStatus.ACTIVE },
+        data: { status: InvitationStatus.REVOKED, revokedAt: now },
+      }),
+    ]);
     this.audit.record({
       userId: user.sub,
       action: 'GUEST_DELETED',

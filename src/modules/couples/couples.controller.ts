@@ -25,6 +25,7 @@ import {
   UpdateCoupleAccountDto,
   UpdateCoupleDto,
 } from './dto/couple.dto';
+import { CreateAccessAgentDto, UpdateAccessAgentDto } from './dto/access-agent.dto';
 
 @ApiTags('Couples')
 @ApiBearerAuth()
@@ -52,11 +53,13 @@ export class CouplesController {
   }
 
   @Get(':id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COUPLE)
   get(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.service.get(id, user);
   }
 
   @Patch(':id')
+  @Roles(UserRole.SUPER_ADMIN, UserRole.COUPLE)
   update(@Param('id') id: string, @Body() dto: UpdateCoupleDto, @CurrentUser() user: AuthUser) {
     return this.service.update(id, dto, user);
   }
@@ -98,5 +101,26 @@ export class CouplesController {
   @Roles(UserRole.SUPER_ADMIN)
   suspend(@Param('id') id: string, @CurrentUser() user: AuthUser) {
     return this.service.status(id, CoupleStatus.SUSPENDED, user);
+  }
+
+  @Post(':id/access-agents')
+  @Roles(UserRole.SUPER_ADMIN)
+  createAccessAgent(
+    @Param('id') id: string,
+    @Body() dto: CreateAccessAgentDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.createAccessAgent(id, dto, user);
+  }
+
+  @Patch(':id/access-agents/:agentId')
+  @Roles(UserRole.SUPER_ADMIN)
+  updateAccessAgent(
+    @Param('id') id: string,
+    @Param('agentId') agentId: string,
+    @Body() dto: UpdateAccessAgentDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.updateAccessAgent(id, agentId, dto, user);
   }
 }

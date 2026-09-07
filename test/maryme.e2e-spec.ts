@@ -98,7 +98,7 @@ describe('Maryme lifecycle (e2e)', () => {
       .post('/api/v1/checkins/validate')
       .set(auth(token))
       .send({ token: firstInvitation.token })
-      .expect(403);
+      .expect(201);
     await request(app.getHttpServer())
       .post('/api/v1/checkins/validate')
       .set(auth(token))
@@ -108,7 +108,7 @@ describe('Maryme lifecycle (e2e)', () => {
       await prisma.invitation.count({
         where: { guestId: guest.id, status: InvitationStatus.ACTIVE },
       }),
-    ).toBe(1);
+    ).toBe(2);
     const results = await Promise.all([
       request(app.getHttpServer())
         .post('/api/v1/checkins')
@@ -134,7 +134,8 @@ describe('Maryme lifecycle (e2e)', () => {
       .post('/api/v1/checkins')
       .set(auth(token))
       .send({ token: invitation.token })
-      .expect(403);
+      .expect(409)
+      .expect(({ body }) => expect(body.code).toBe('GUEST_ALREADY_CHECKED_IN'));
     await request(app.getHttpServer())
       .post(`/api/v1/couples/${id}/guests/bulk`)
       .set(auth(token))
@@ -215,7 +216,9 @@ describe('Maryme lifecycle (e2e)', () => {
     const account = await prisma.user.findUniqueOrThrow({ where: { email: 'a@maryme.test' } });
     expect(await argon2.verify(account.passwordHash, 'NewCouplePassword123!')).toBe(true);
     expect(
-      await prisma.refreshSession.count({ where: { userId: account.id, revokedAt: { not: null } } }),
+      await prisma.refreshSession.count({
+        where: { userId: account.id, revokedAt: { not: null } },
+      }),
     ).toBeGreaterThan(0);
     expect(
       await prisma.auditLog.count({

@@ -48,8 +48,12 @@ export class AuthService {
   }
   private assertAccess(user: UserWithStatus) {
     if (!user.isActive)
-      throw new ForbiddenException({ code: 'ACCOUNT_INACTIVE', message: 'Ce compte est inactif.' });
-    if (user.role !== UserRole.COUPLE) return;
+      throw new ForbiddenException({
+        code:
+          user.role === UserRole.ACCESS_AGENT ? 'ACCESS_AGENT_INACTIVE' : 'ACCOUNT_INACTIVE',
+        message: 'Ce compte est inactif.',
+      });
+    if (user.role === UserRole.SUPER_ADMIN) return;
     if (!user.couple || user.couple.deletedAt) {
       throw new ForbiddenException({
         code: 'COUPLE_DELETED',
