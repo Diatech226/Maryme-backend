@@ -4,7 +4,7 @@ import * as argon2 from 'argon2';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { InvitationStatus, UserRole } from '@prisma/client';
 import { cleanTestDatabase, createTestApplication } from './test-application';
-const coupleDto = (email: string, password: string) => ({
+const coupleDto = (email: string, phone: string, password: string) => ({
   partner1: 'Alice',
   partner2: 'Bob',
   weddingDate: '2027-06-01T00:00:00.000Z',
@@ -13,6 +13,7 @@ const coupleDto = (email: string, password: string) => ({
   phone: '+22670000000',
   guestQuota: 10,
   accountEmail: email,
+  accountPhone: phone,
   accountPassword: password,
 });
 describe('Maryme lifecycle (e2e)', () => {
@@ -24,6 +25,7 @@ describe('Maryme lifecycle (e2e)', () => {
     await prisma.user.create({
       data: {
         email: 'admin.flow@maryme.test',
+        phone: '+22670000001',
         passwordHash: await argon2.hash('AdminPassword123!'),
         role: UserRole.SUPER_ADMIN,
       },
@@ -42,11 +44,15 @@ describe('Maryme lifecycle (e2e)', () => {
     const created = await request(app.getHttpServer())
       .post('/api/v1/couples')
       .set(auth(admin))
-      .send({ ...coupleDto(email, password), notes: 'Test' })
+      .send({ ...coupleDto(email, '+22670000002', password), notes: 'Test' })
       .expect(201);
     const id = created.body.data.id;
     expect(created.body.data.status).toBe('PENDING');
     expect(created.body.data.notes).toBe('Test');
+    expect(await prisma.user.findUnique({ where: { email } })).toMatchObject({
+      phone: '+22670000002',
+      coupleId: id,
+    });
     await request(app.getHttpServer())
       .get(`/api/v1/couples/${id}`)
       .set(auth(admin))
@@ -140,24 +146,26 @@ describe('Maryme lifecycle (e2e)', () => {
       await request(app.getHttpServer())
         .post('/api/v1/couples')
         .set(auth(admin))
-        .send(coupleDto('a@maryme.test', 'CouplePassword123!'))
+        .send(coupleDto('a@maryme.test', '+22670000003', 'CouplePassword123!'))
     ).body.data;
     const b = (
       await request(app.getHttpServer())
         .post('/api/v1/couples')
         .set(auth(admin))
-        .send(coupleDto('b@maryme.test', 'CouplePassword123!'))
+        .send(coupleDto('b@maryme.test', '+22670000004', 'CouplePassword123!'))
     ).body.data;
     await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({ email: 'b@maryme.test', password: 'CouplePassword123!' })
-      .expect(403);
+      .expect(403)
+      .expect(({ body }) => expect(body.code).toBe('COUPLE_PENDING'));
     await request(app.getHttpServer()).post(`/api/v1/couples/${a.id}/authorize`).set(auth(admin));
-    const token = (
-      await request(app.getHttpServer())
-        .post('/api/v1/auth/login')
-        .send({ email: 'a@maryme.test', password: 'CouplePassword123!' })
-    ).body.accessToken;
+    const authorizedLogin = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'a@maryme.test', password: 'CouplePassword123!' })
+      .expect(200);
+    const token = authorizedLogin.body.accessToken;
+    const refreshCookie = authorizedLogin.headers['set-cookie'];
     const guest = {
       firstName: 'A',
       lastName: 'Guest',
@@ -191,6 +199,40 @@ describe('Maryme lifecycle (e2e)', () => {
     await request(app.getHttpServer())
       .post('/api/v1/auth/login')
       .send({ email: 'a@maryme.test', password: 'CouplePassword123!' })
-      .expect(403);
+      .expect(403)
+      .expect(({ body }) => expect(body.code).toBe('COUPLE_SUSPENDED'));
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/refresh')
+      .set('Cookie', refreshCookie)
+      .expect(403)
+      .expect(({ body }) => expect(body.code).toBe('COUPLE_SUSPENDED'));
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/couples/${a.id}/reset-password`)
+      .set(auth(admin))
+      .send({ password: 'NewCouplePassword123!' })
+      .expect(201);
+    const account = await prisma.user.findUniqueOrThrow({ where: { email: 'a@maryme.test' } });
+    expect(await argon2.verify(account.passwordHash, 'NewCouplePassword123!')).toBe(true);
+    expect(
+      await prisma.refreshSession.count({ where: { userId: account.id, revokedAt: { not: null } } }),
+    ).toBeGreaterThan(0);
+    expect(
+      await prisma.auditLog.count({
+        where: { action: 'COUPLE_PASSWORD_RESET', entityId: account.id },
+      }),
+    ).toBe(1);
+
+    await request(app.getHttpServer()).post(`/api/v1/couples/${a.id}/authorize`).set(auth(admin));
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'a@maryme.test', password: 'CouplePassword123!' })
+      .expect(401)
+      .expect(({ body }) => expect(body.code).toBe('INVALID_CREDENTIALS'));
+    await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .send({ email: 'a@maryme.test', password: 'NewCouplePassword123!' })
+      .expect(200)
+      .expect(({ body }) => expect(body.accessToken).toBeDefined());
   });
 });

@@ -7,11 +7,12 @@ import { createHash, randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { LoginDto } from './dto/login.dto';
+import { parseDurationMs } from './refresh-cookie.config';
 
 export interface SafeUser {
   id: string;
   email: string;
-  phone: string | null;
+  phone: string;
   role: UserRole;
   coupleId: string | null;
   firstName: string | null;
@@ -46,18 +47,26 @@ export class AuthService {
     };
   }
   private assertAccess(user: UserWithStatus) {
-    if (!user.isActive) throw new ForbiddenException('Ce compte est inactif.');
+    if (!user.isActive)
+      throw new ForbiddenException({ code: 'ACCOUNT_INACTIVE', message: 'Ce compte est inactif.' });
     if (user.role !== UserRole.COUPLE) return;
     if (!user.couple || user.couple.deletedAt) {
-      throw new ForbiddenException("Ce compte n'est plus disponible.");
+      throw new ForbiddenException({
+        code: 'COUPLE_DELETED',
+        message: "Ce compte n'est plus disponible.",
+      });
     }
     if (user.couple.status === CoupleStatus.PENDING) {
-      throw new ForbiddenException(
-        "Votre compte existe mais votre dossier n'est pas encore autorisé.",
-      );
+      throw new ForbiddenException({
+        code: 'COUPLE_PENDING',
+        message: "Votre compte existe mais votre dossier n'est pas encore autorisé.",
+      });
     }
     if (user.couple.status === CoupleStatus.SUSPENDED) {
-      throw new ForbiddenException('Ce compte est actuellement suspendu.');
+      throw new ForbiddenException({
+        code: 'COUPLE_SUSPENDED',
+        message: 'Ce compte est actuellement suspendu.',
+      });
     }
   }
   private async issue(user: User, ipAddress?: string, userAgent?: string): Promise<SessionResult> {
@@ -71,7 +80,9 @@ export class AuthService {
       data: {
         userId: user.id,
         tokenHash: this.hash(refreshToken),
-        expiresAt: new Date(Date.now() + 30 * 86400000),
+        expiresAt: new Date(
+          Date.now() + parseDurationMs(this.config.get<string>('auth.refreshExpiresIn', '30d')),
+        ),
         ipAddress,
         userAgent,
       },
@@ -91,7 +102,10 @@ export class AuthService {
         ipAddress: ip,
         userAgent: agent,
       });
-      throw new UnauthorizedException('Invalid credentials');
+      throw new UnauthorizedException({
+        code: 'INVALID_CREDENTIALS',
+        message: 'Email ou mot de passe incorrect.',
+      });
     }
     this.assertAccess(user);
     await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });

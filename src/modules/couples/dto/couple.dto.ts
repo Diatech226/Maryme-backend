@@ -24,9 +24,13 @@ export class CreateCoupleDto {
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() partner1FullName?: string;
   @IsOptional() @IsString() partner2FullName?: string;
-  @IsOptional() @IsEmail() accountEmail?: string;
-  @IsOptional() @IsString() accountPhone?: string;
-  @IsOptional() @IsString() @MinLength(COUPLE_PASSWORD_MIN_LENGTH) accountPassword?: string;
+  @IsEmail({}, { message: 'Email, téléphone et mot de passe du compte sont obligatoires.' })
+  accountEmail!: string;
+  @IsString({ message: 'Email, téléphone et mot de passe du compte sont obligatoires.' })
+  accountPhone!: string;
+  @IsString({ message: 'Email, téléphone et mot de passe du compte sont obligatoires.' })
+  @MinLength(COUPLE_PASSWORD_MIN_LENGTH)
+  accountPassword!: string;
   @IsOptional() @IsArray() @IsString({ each: true }) groomFamilies?: string[];
   @IsOptional() @IsArray() @IsString({ each: true }) brideFamilies?: string[];
 }
