@@ -14,6 +14,7 @@ export class ValidateCheckInDto {
 }
 export class CreateCheckInDto extends ValidateCheckInDto {
   @IsOptional() @IsString() @MaxLength(128) @Matches(/^[\p{L}\p{N}._: -]+$/u) deviceId?: string;
+  @IsOptional() @IsString() @MaxLength(100) stationName?: string;
 }
 export class CheckInQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;

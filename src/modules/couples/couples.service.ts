@@ -18,7 +18,11 @@ import {
   UpdateCoupleAccountDto,
   UpdateCoupleDto,
 } from './dto/couple.dto';
-import { CreateAccessAgentDto, UpdateAccessAgentDto } from './dto/access-agent.dto';
+import {
+  CreateAccessAgentDto,
+  ResetAccessAgentPasswordDto,
+  UpdateAccessAgentDto,
+} from './dto/access-agent.dto';
 
 @Injectable()
 export class CouplesService {
@@ -187,7 +191,15 @@ export class CouplesService {
     return couple;
   }
   async update(id: string, dto: UpdateCoupleDto, user: AuthUser) {
-    await this.get(id, user);
+    const current = await this.get(id, user);
+    const accessOpensAt = dto.accessOpensAt ?? current.accessOpensAt;
+    const accessClosesAt = dto.accessClosesAt ?? current.accessClosesAt;
+    if (accessOpensAt && accessClosesAt && accessClosesAt <= accessOpensAt) {
+      throw new BadRequestException({
+        code: 'INVALID_ACCESS_WINDOW',
+        message: "La fermeture du contrôle d'accès doit suivre son ouverture.",
+      });
+    }
     const { guestQuota, ...selfData } = dto;
     const data = user.role === UserRole.SUPER_ADMIN ? dto : selfData;
     const result = await this.prisma.couple.update({ where: { id }, data });
@@ -263,6 +275,7 @@ export class CouplesService {
       });
       return {
         id: agent.id,
+        name: [agent.firstName, agent.lastName].filter(Boolean).join(' '),
         email: agent.email,
         phone: agent.phone,
         role: agent.role,
@@ -276,24 +289,92 @@ export class CouplesService {
     }
   }
 
+  async accessContext(user: AuthUser) {
+    if (!user.coupleId) throw new NotFoundException('Mariage introuvable.');
+    const couple = await this.prisma.couple.findFirst({
+      where: {
+        id: user.coupleId,
+        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+      },
+      select: {
+        id: true,
+        partner1: true,
+        partner2: true,
+        weddingDate: true,
+        location: true,
+        accessOpensAt: true,
+        accessClosesAt: true,
+        status: true,
+      },
+    });
+    if (!couple) throw new NotFoundException('Mariage introuvable.');
+    const { id, ...context } = couple;
+    return { coupleId: id, ...context };
+  }
+
+  async listAccessAgents(id: string, actor: AuthUser) {
+    await this.get(id, actor);
+    const agents = await this.prisma.user.findMany({
+      where: { coupleId: id, role: UserRole.ACCESS_AGENT },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        isActive: true,
+        coupleId: true,
+        createdAt: true,
+        lastLoginAt: true,
+      },
+    });
+    return agents.map(({ firstName, lastName, ...agent }) => ({
+      ...agent,
+      name: [firstName, lastName].filter(Boolean).join(' '),
+    }));
+  }
+
   async updateAccessAgent(id: string, agentId: string, dto: UpdateAccessAgentDto, actor: AuthUser) {
     await this.get(id, actor);
     const agent = await this.prisma.user.findFirst({
       where: { id: agentId, coupleId: id, role: UserRole.ACCESS_AGENT },
     });
     if (!agent) throw new NotFoundException('Agent de contrôle introuvable.');
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.update({
-        where: { id: agentId },
-        data: { isActive: dto.isActive },
+    let phone: string | undefined;
+    try {
+      phone = dto.phone === undefined ? undefined : normalizePhoneNumber(dto.phone);
+    } catch (error) {
+      throw new BadRequestException({
+        code: 'INVALID_PHONE_NUMBER',
+        message: (error as Error).message,
       });
-      if (dto.isActive === false)
-        await tx.refreshSession.updateMany({
-          where: { userId: agentId, OR: [{ revokedAt: null }, { revokedAt: { isSet: false } }] },
-          data: { revokedAt: new Date() },
+    }
+    const parts = dto.name?.trim().split(/\s+/);
+    let updated;
+    try {
+      updated = await this.prisma.$transaction(async (tx) => {
+        const user = await tx.user.update({
+          where: { id: agentId },
+          data: {
+            ...(dto.name !== undefined
+              ? { firstName: parts?.shift() || dto.name.trim(), lastName: parts?.join(' ') || null }
+              : {}),
+            ...(dto.email !== undefined ? { email: dto.email.trim().toLowerCase() } : {}),
+            ...(phone !== undefined ? { phone } : {}),
+            ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+          },
         });
-      return user;
-    });
+        if (dto.isActive === false)
+          await tx.refreshSession.updateMany({
+            where: { userId: agentId, OR: [{ revokedAt: null }, { revokedAt: { isSet: false } }] },
+            data: { revokedAt: new Date() },
+          });
+        return user;
+      });
+    } catch (error) {
+      this.duplicateAccountError(error);
+    }
     void this.audit.record({
       userId: actor.sub,
       action: dto.isActive === false ? 'ACCESS_AGENT_DISABLED' : 'ACCESS_AGENT_UPDATED',
@@ -303,9 +384,55 @@ export class CouplesService {
     });
     return {
       id: updated.id,
-      role: updated.role,
+      name: [updated.firstName, updated.lastName].filter(Boolean).join(' '),
+      email: updated.email,
+      phone: updated.phone,
       coupleId: updated.coupleId,
       isActive: updated.isActive,
+      createdAt: updated.createdAt,
+      lastLoginAt: updated.lastLoginAt,
+    };
+  }
+
+  async resetAccessAgentPassword(
+    id: string,
+    agentId: string,
+    dto: ResetAccessAgentPasswordDto,
+    actor: AuthUser,
+  ) {
+    await this.get(id, actor);
+    const agent = await this.prisma.user.findFirst({
+      where: { id: agentId, coupleId: id, role: UserRole.ACCESS_AGENT },
+    });
+    if (!agent) throw new NotFoundException('Agent de contrôle introuvable.');
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: agentId },
+        data: { passwordHash: await argon2.hash(dto.password) },
+      }),
+      this.prisma.refreshSession.updateMany({
+        where: { userId: agentId, OR: [{ revokedAt: null }, { revokedAt: { isSet: false } }] },
+        data: { revokedAt: new Date() },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          userId: actor.sub,
+          action: 'ACCESS_AGENT_PASSWORD_RESET',
+          entityType: 'User',
+          entityId: agentId,
+          metadata: { coupleId: id },
+        },
+      }),
+    ]);
+    return {
+      id: agent.id,
+      name: [agent.firstName, agent.lastName].filter(Boolean).join(' '),
+      email: agent.email,
+      phone: agent.phone,
+      isActive: agent.isActive,
+      coupleId: agent.coupleId,
+      createdAt: agent.createdAt,
+      lastLoginAt: agent.lastLoginAt,
     };
   }
 }

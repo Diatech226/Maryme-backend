@@ -1,62 +1,574 @@
 openapi: 3.0.3
-info: {title: Maryme API, version: 1.0.0}
-servers: [{url: http://localhost:4000/api/v1}]
-security: [{bearerAuth: []}]
+info: { title: Maryme API, version: 1.0.0 }
+servers: [{ url: http://localhost:4000/api/v1 }]
+security: [{ bearerAuth: [] }]
 paths:
   /health:
-    get: {security: [], responses: {'200': {description: Healthy}}}
+    get: { security: [], responses: { '200': { description: Healthy } } }
   /auth/login:
     post:
       security: []
-      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/LoginRequest'}}}}
-      responses: {'200': {description: Authenticated, headers: {Set-Cookie: {schema: {type: string}}}, content: {application/json: {schema: {$ref: '#/components/schemas/LoginResponse'}}}}, '401': {$ref: '#/components/responses/Error'}, '403': {$ref: '#/components/responses/Error'}, '429': {$ref: '#/components/responses/Error'}}
+      requestBody:
+        {
+          required: true,
+          content: { application/json: { schema: { $ref: '#/components/schemas/LoginRequest' } } },
+        }
+      responses:
+        {
+          '200':
+            {
+              description: Authenticated,
+              headers: { Set-Cookie: { schema: { type: string } } },
+              content:
+                { application/json: { schema: { $ref: '#/components/schemas/LoginResponse' } } },
+            },
+          '401': { $ref: '#/components/responses/Error' },
+          '403': { $ref: '#/components/responses/Error' },
+          '429': { $ref: '#/components/responses/Error' },
+        }
   /auth/refresh:
-    post: {security: [{refreshCookie: []}], responses: {'200': {description: Rotated session, content: {application/json: {schema: {$ref: '#/components/schemas/LoginResponse'}}}}, '401': {$ref: '#/components/responses/Error'}}}
+    post:
+      {
+        security: [{ refreshCookie: [] }],
+        responses:
+          {
+            '200':
+              {
+                description: Rotated session,
+                content:
+                  { application/json: { schema: { $ref: '#/components/schemas/LoginResponse' } } },
+              },
+            '401': { $ref: '#/components/responses/Error' },
+          },
+      }
   /auth/logout:
-    post: {security: [{refreshCookie: []}], responses: {'204': {description: Logged out}}}
+    post: { security: [{ refreshCookie: [] }], responses: { '204': { description: Logged out } } }
   /auth/me:
-    get: {responses: {'200': {description: Current user, content: {application/json: {schema: {$ref: '#/components/schemas/User'}}}}, '401': {$ref: '#/components/responses/Error'}}}
+    get:
+      {
+        responses:
+          {
+            '200':
+              {
+                description: Current user,
+                content: { application/json: { schema: { $ref: '#/components/schemas/User' } } },
+              },
+            '401': { $ref: '#/components/responses/Error' },
+          },
+      }
   /couples:
-    get: {parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Limit'}, {in: query, name: status, schema: {type: string, enum: [PENDING, AUTHORIZED, SUSPENDED]}}, {in: query, name: search, schema: {type: string}}], responses: {'200': {description: Couples page}}}
-    post: {requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Couple'}}}}, responses: {'201': {description: Created}}}
+    get:
+      {
+        parameters:
+          [
+            { $ref: '#/components/parameters/Page' },
+            { $ref: '#/components/parameters/Limit' },
+            {
+              in: query,
+              name: status,
+              schema: { type: string, enum: [PENDING, AUTHORIZED, SUSPENDED] },
+            },
+            { in: query, name: search, schema: { type: string } },
+          ],
+        responses: { '200': { description: Couples page } },
+      }
+    post:
+      {
+        requestBody:
+          {
+            required: true,
+            content: { application/json: { schema: { $ref: '#/components/schemas/Couple' } } },
+          },
+        responses: { '201': { description: Created } },
+      }
   /couples/{coupleId}/guests:
-    parameters: [{$ref: '#/components/parameters/CoupleId'}]
-    get: {parameters: [{$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Limit'}, {in: query, name: search, schema: {type: string}}], responses: {'200': {description: Guests page}, '403': {$ref: '#/components/responses/Error'}}}
-    post: {requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/Guest'}}}}, responses: {'201': {description: Created}, '409': {$ref: '#/components/responses/Error'}}}
+    parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+    get:
+      {
+        parameters:
+          [
+            { $ref: '#/components/parameters/Page' },
+            { $ref: '#/components/parameters/Limit' },
+            { in: query, name: search, schema: { type: string } },
+          ],
+        responses:
+          { '200': { description: Guests page }, '403': { $ref: '#/components/responses/Error' } },
+      }
+    post:
+      {
+        requestBody:
+          {
+            required: true,
+            content: { application/json: { schema: { $ref: '#/components/schemas/Guest' } } },
+          },
+        responses:
+          { '201': { description: Created }, '409': { $ref: '#/components/responses/Error' } },
+      }
   /couples/{coupleId}/guests/bulk:
-    post: {parameters: [{$ref: '#/components/parameters/CoupleId'}], requestBody: {required: true, content: {application/json: {schema: {type: object, required: [mode, guests], properties: {mode: {type: string, enum: [append, replace]}, guests: {type: array, maxItems: 1000, items: {$ref: '#/components/schemas/Guest'}}}}}}}, responses: {'201': {description: Bulk result}, '409': {description: Quota exceeded or replace forbidden after check-in}}}
+    post:
+      {
+        parameters: [{ $ref: '#/components/parameters/CoupleId' }],
+        requestBody:
+          {
+            required: true,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        required: [mode, guests],
+                        properties:
+                          {
+                            mode: { type: string, enum: [append, replace] },
+                            guests:
+                              {
+                                type: array,
+                                maxItems: 1000,
+                                items: { $ref: '#/components/schemas/Guest' },
+                              },
+                          },
+                      },
+                  },
+              },
+          },
+        responses:
+          {
+            '201': { description: Bulk result },
+            '409': { description: Quota exceeded or replace forbidden after check-in },
+          },
+      }
   /couples/{coupleId}/checkins:
-    get: {parameters: [{$ref: '#/components/parameters/CoupleId'}, {$ref: '#/components/parameters/Page'}, {$ref: '#/components/parameters/Limit'}, {in: query, name: search, schema: {type: string}}], responses: {'200': {description: Check-in page}, '403': {$ref: '#/components/responses/Error'}}}
+    get:
+      {
+        parameters:
+          [
+            { $ref: '#/components/parameters/CoupleId' },
+            { $ref: '#/components/parameters/Page' },
+            { $ref: '#/components/parameters/Limit' },
+            { in: query, name: search, schema: { type: string } },
+          ],
+        responses:
+          {
+            '200': { description: Check-in page },
+            '403': { $ref: '#/components/responses/Error' },
+          },
+      }
+  /access/context:
+    get:
+      description: Minimal wedding context for the authenticated ACCESS_AGENT.
+      responses:
+        '200':
+          {
+            description: Access context,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/AccessContext' } } },
+          }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
   /couples/{coupleId}/access-agents:
-    post: {description: SUPER_ADMIN only, parameters: [{$ref: '#/components/parameters/CoupleId'}], requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/AccessAgentRequest'}}}}, responses: {'201': {description: Access agent created}, '403': {$ref: '#/components/responses/Error'}}}
+    get:
+      description: List access agents (SUPER_ADMIN only).
+      parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+      responses:
+        '200':
+          {
+            description: Access agents,
+            content:
+              {
+                application/json:
+                  { schema: { type: array, items: { $ref: '#/components/schemas/AccessAgent' } } },
+              },
+          }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      {
+        description: SUPER_ADMIN only,
+        parameters: [{ $ref: '#/components/parameters/CoupleId' }],
+        requestBody:
+          {
+            required: true,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/AccessAgentRequest' } } },
+          },
+        responses:
+          {
+            '201': { description: Access agent created },
+            '403': { $ref: '#/components/responses/Error' },
+          },
+      }
+  /couples/{coupleId}/access-agents/{agentId}:
+    patch:
+      description: Update an access agent (SUPER_ADMIN only).
+      parameters:
+        [
+          { $ref: '#/components/parameters/CoupleId' },
+          { in: path, name: agentId, required: true, schema: { type: string } },
+        ]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                { schema: { $ref: '#/components/schemas/UpdateAccessAgentRequest' } },
+            },
+        }
+      responses:
+        {
+          '200': { description: Updated access agent },
+          '403': { $ref: '#/components/responses/Error' },
+          '409': { $ref: '#/components/responses/Error' },
+        }
+  /couples/{coupleId}/access-agents/{agentId}/reset-password:
+    post:
+      description: Reset an access-agent password and revoke all refresh sessions (SUPER_ADMIN only).
+      parameters:
+        [
+          { $ref: '#/components/parameters/CoupleId' },
+          { in: path, name: agentId, required: true, schema: { type: string } },
+        ]
+      requestBody:
+        {
+          required: true,
+          content:
+            { application/json: { schema: { $ref: '#/components/schemas/ResetPasswordRequest' } } },
+        }
+      responses:
+        {
+          '201': { description: Password reset },
+          '403': { $ref: '#/components/responses/Error' },
+          '404': { $ref: '#/components/responses/Error' },
+        }
   /guests/{guestId}/invitations:
-    parameters: [{in: path, name: guestId, required: true, schema: {type: string, format: uuid}}]
-    get: {responses: {'200': {description: Invitations}}}
-    post: {requestBody: {content: {application/json: {schema: {type: object, properties: {expiresAt: {type: string, format: date-time}, revokePrevious: {type: boolean, default: false, description: Explicitly revoke older active QR codes}}}}}}, responses: {'201': {description: Generated with one-time raw token}}}
+    parameters: [{ in: path, name: guestId, required: true, schema: { type: string } }]
+    get: { responses: { '200': { description: Invitations } } }
+    post:
+      {
+        requestBody:
+          {
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        properties:
+                          {
+                            expiresAt: { type: string, format: date-time },
+                            revokePrevious:
+                              {
+                                type: boolean,
+                                default: false,
+                                description: Explicitly revoke older active QR codes,
+                              },
+                          },
+                      },
+                  },
+              },
+          },
+        responses: { '201': { description: Generated with one-time raw token } },
+      }
   /invitations/{id}/revoke:
-    post: {parameters: [{in: path, name: id, required: true, schema: {type: string, format: uuid}}], responses: {'201': {description: Revoked}}}
+    post:
+      {
+        parameters: [{ in: path, name: id, required: true, schema: { type: string } }],
+        responses: { '201': { description: Revoked } },
+      }
   /checkins/validate:
-    post: {description: RSVP PENDING and DECLINED remain admissible and produce explicit warnings, requestBody: {required: true, content: {application/json: {schema: {type: object, required: [token], properties: {token: {type: string, minLength: 32}}}}}}, responses: {'201': {description: Minimal access validation result}, '404': {description: QR_INVALID}, '403': {description: QR_REVOKED, QR_EXPIRED, GUEST_DELETED, WRONG_WEDDING, EVENT_NOT_OPEN or EVENT_CLOSED}, '409': {description: QR_ALREADY_USED}, '429': {$ref: '#/components/responses/Error'}}}
+    post:
+      {
+        description: RSVP PENDING and DECLINED remain admissible and produce explicit warnings,
+        requestBody:
+          {
+            required: true,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        required: [token],
+                        properties: { token: { type: string, minLength: 32 } },
+                      },
+                  },
+              },
+          },
+        responses:
+          {
+            '201':
+              {
+                description: Minimal access validation result with existing check-in details,
+                content:
+                  {
+                    application/json:
+                      { schema: { $ref: '#/components/schemas/CheckInValidation' } },
+                  },
+              },
+            '404': { description: QR_INVALID },
+            '403':
+              {
+                description: QR_REVOKED,
+                QR_EXPIRED,
+                GUEST_DELETED,
+                WRONG_WEDDING,
+                EVENT_NOT_OPEN or EVENT_CLOSED,
+              },
+            '429': { $ref: '#/components/responses/Error' },
+          },
+      }
   /checkins:
-    post: {requestBody: {required: true, content: {application/json: {schema: {type: object, required: [token], properties: {token: {type: string}, deviceId: {type: string}}}}}}, responses: {'201': {description: Checked in, content: {application/json: {schema: {$ref: '#/components/schemas/CheckIn'}}}}, '409': {$ref: '#/components/responses/Error'}}}
+    post:
+      {
+        requestBody:
+          {
+            required: true,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: object,
+                        required: [token],
+                        properties:
+                          {
+                            token: { type: string },
+                            deviceId: { type: string, maxLength: 128 },
+                            stationName: { type: string, maxLength: 100 },
+                          },
+                      },
+                  },
+              },
+          },
+        responses:
+          {
+            '201':
+              {
+                description: Checked in,
+                content: { application/json: { schema: { $ref: '#/components/schemas/CheckIn' } } },
+              },
+            '409': { $ref: '#/components/responses/Error' },
+          },
+      }
 components:
   securitySchemes:
-    bearerAuth: {type: http, scheme: bearer, bearerFormat: JWT}
-    refreshCookie: {type: apiKey, in: cookie, name: maryme_refresh}
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+    refreshCookie: { type: apiKey, in: cookie, name: maryme_refresh }
   parameters:
-    Page: {in: query, name: page, schema: {type: integer, minimum: 1, default: 1}}
-    Limit: {in: query, name: limit, schema: {type: integer, minimum: 1, maximum: 100, default: 50}}
-    CoupleId: {in: path, name: coupleId, required: true, schema: {type: string, format: uuid}}
+    Page: { in: query, name: page, schema: { type: integer, minimum: 1, default: 1 } }
+    Limit:
+      { in: query, name: limit, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+    CoupleId: { in: path, name: coupleId, required: true, schema: { type: string } }
   responses:
-    Error: {description: Error, content: {application/json: {schema: {$ref: '#/components/schemas/ErrorResponse'}}}}
+    Error:
+      {
+        description: Error,
+        content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
+      }
   schemas:
-    LoginRequest: {type: object, required: [email, password], properties: {email: {type: string, format: email}, password: {type: string, minLength: 12}}}
-    LoginResponse: {type: object, required: [accessToken, user], properties: {accessToken: {type: string}, user: {$ref: '#/components/schemas/User'}}}
-    User: {type: object, required: [id, email, role], properties: {id: {type: string, format: uuid}, email: {type: string, format: email}, phone: {type: string, nullable: true}, role: {type: string, enum: [SUPER_ADMIN, COUPLE, ACCESS_AGENT]}, coupleId: {type: string, format: uuid, nullable: true}, firstName: {type: string, nullable: true}, lastName: {type: string, nullable: true}}}
-    AccessAgentRequest: {type: object, required: [email, phone, password, name], properties: {email: {type: string, format: email}, phone: {type: string}, password: {type: string, minLength: 12}, name: {type: string, maxLength: 100}}}
-    Couple: {type: object, properties: {id: {type: string, format: uuid}, partner1: {type: string}, partner2: {type: string}, weddingDate: {type: string, format: date-time}, accessOpensAt: {type: string, format: date-time, nullable: true}, accessClosesAt: {type: string, format: date-time, nullable: true}, status: {type: string, enum: [PENDING, AUTHORIZED, SUSPENDED]}, guestQuota: {type: integer}}}
-    Guest: {type: object, properties: {id: {type: string, format: uuid}, firstName: {type: string}, lastName: {type: string}, side: {type: string, enum: [GROOM, BRIDE]}, category: {type: string, enum: [GROOM_FAMILY, BRIDE_FAMILY, WITNESS, FRIENDS, COLLEAGUES, VIP]}, rsvpStatus: {type: string, enum: [CONFIRMED, PENDING, DECLINED]}, dietary: {type: string, enum: [STANDARD, VEGETARIAN, VEGAN, GLUTEN_FREE, CHILD_MENU, HALAL, NO_SEAFOOD]}}}
-    Invitation: {type: object, properties: {id: {type: string, format: uuid}, guestId: {type: string, format: uuid}, status: {type: string, enum: [ACTIVE, REVOKED, EXPIRED]}, token: {type: string, description: Present only in generation response}}}
-    CheckIn: {type: object, properties: {id: {type: string, format: uuid}, guestId: {type: string, format: uuid}, checkedInAt: {type: string, format: date-time}, deviceId: {type: string, nullable: true}, status: {type: string, enum: [VALID, DUPLICATE, REJECTED]}}}
-    PaginationMeta: {type: object, required: [page, limit, total, totalPages], properties: {page: {type: integer}, limit: {type: integer}, total: {type: integer}, totalPages: {type: integer}}}
-    ErrorResponse: {type: object, required: [status, code, message], properties: {status: {type: integer}, code: {type: string}, message: {type: string}, details: {type: object}}}
+    LoginRequest:
+      {
+        type: object,
+        required: [email, password],
+        properties: { email: { type: string, format: email }, password: { type: string } },
+      }
+    LoginResponse:
+      {
+        type: object,
+        required: [accessToken, user],
+        properties: { accessToken: { type: string }, user: { $ref: '#/components/schemas/User' } },
+      }
+    User:
+      {
+        type: object,
+        required: [id, email, role],
+        properties:
+          {
+            id: { type: string },
+            email: { type: string, format: email },
+            phone: { type: string, nullable: true },
+            role: { type: string, enum: [SUPER_ADMIN, COUPLE, ACCESS_AGENT] },
+            coupleId: { type: string, nullable: true },
+            firstName: { type: string, nullable: true },
+            lastName: { type: string, nullable: true },
+          },
+      }
+    AccessAgentRequest:
+      {
+        type: object,
+        required: [email, phone, password, name],
+        properties:
+          {
+            email: { type: string, format: email },
+            phone: { type: string },
+            password: { type: string, minLength: 6 },
+            name: { type: string, maxLength: 100 },
+          },
+      }
+    UpdateAccessAgentRequest:
+      type: object
+      properties:
+        name: { type: string, maxLength: 100 }
+        email: { type: string, format: email }
+        phone: { type: string }
+        isActive: { type: boolean }
+    ResetPasswordRequest:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, minLength: 6 }
+    AccessAgent:
+      type: object
+      required: [id, name, email, phone, isActive, coupleId, createdAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        phone: { type: string }
+        isActive: { type: boolean }
+        coupleId: { type: string }
+        createdAt: { type: string, format: date-time }
+        lastLoginAt: { type: string, format: date-time, nullable: true }
+    AccessContext:
+      type: object
+      required: [coupleId, partner1, partner2, weddingDate, location, status]
+      properties:
+        coupleId: { type: string }
+        partner1: { type: string }
+        partner2: { type: string }
+        weddingDate: { type: string, format: date-time }
+        location: { type: string }
+        accessOpensAt: { type: string, format: date-time, nullable: true }
+        accessClosesAt: { type: string, format: date-time, nullable: true }
+        status: { type: string, enum: [AUTHORIZED] }
+    Couple:
+      {
+        type: object,
+        properties:
+          {
+            id: { type: string },
+            partner1: { type: string },
+            partner2: { type: string },
+            weddingDate: { type: string, format: date-time },
+            accessOpensAt: { type: string, format: date-time, nullable: true },
+            accessClosesAt:
+              {
+                type: string,
+                format: date-time,
+                nullable: true,
+                description: Must be later than accessOpensAt when both are set; otherwise INVALID_ACCESS_WINDOW.,
+              },
+            status: { type: string, enum: [PENDING, AUTHORIZED, SUSPENDED] },
+            guestQuota: { type: integer },
+          },
+      }
+    Guest:
+      {
+        type: object,
+        properties:
+          {
+            id: { type: string },
+            firstName: { type: string },
+            lastName: { type: string },
+            side: { type: string, enum: [GROOM, BRIDE] },
+            category:
+              {
+                type: string,
+                enum: [GROOM_FAMILY, BRIDE_FAMILY, WITNESS, FRIENDS, COLLEAGUES, VIP],
+              },
+            rsvpStatus: { type: string, enum: [CONFIRMED, PENDING, DECLINED] },
+            dietary:
+              {
+                type: string,
+                enum: [STANDARD, VEGETARIAN, VEGAN, GLUTEN_FREE, CHILD_MENU, HALAL, NO_SEAFOOD],
+              },
+          },
+      }
+    Invitation:
+      {
+        type: object,
+        properties:
+          {
+            id: { type: string },
+            guestId: { type: string },
+            status: { type: string, enum: [ACTIVE, REVOKED, EXPIRED] },
+            token: { type: string, description: Present only in generation response },
+          },
+      }
+    CheckIn:
+      type: object
+      properties:
+        id: { type: string }
+        guestId: { type: string }
+        coupleId: { type: string }
+        checkedInAt: { type: string, format: date-time }
+        deviceId: { type: string, nullable: true }
+        stationName: { type: string, nullable: true, maxLength: 100 }
+        operatorId: { type: string, nullable: true }
+        status: { type: string, enum: [VALID, DUPLICATE, REJECTED] }
+        guest:
+          type: object
+          properties:
+            id: { type: string }
+            firstName: { type: string }
+            lastName: { type: string }
+            tableNumber: { type: string, nullable: true }
+            assignedSeats: { type: array, items: { type: string } }
+            coupons: { type: integer }
+            side: { type: string, enum: [GROOM, BRIDE] }
+            category: { type: string }
+            rsvpStatus: { type: string, enum: [CONFIRMED, PENDING, DECLINED] }
+    CheckInValidation:
+      type: object
+      required: [valid, alreadyCheckedIn, guest]
+      properties:
+        valid: { type: boolean, enum: [true] }
+        alreadyCheckedIn: { type: boolean }
+        guest:
+          type: object
+          properties:
+            id: { type: string }
+            firstName: { type: string }
+            lastName: { type: string }
+            tableNumber: { type: string, nullable: true }
+            assignedSeats: { type: array, items: { type: string } }
+            coupons: { type: integer }
+            side: { type: string, enum: [GROOM, BRIDE] }
+            category: { type: string }
+            rsvpStatus: { type: string, enum: [CONFIRMED, PENDING, DECLINED] }
+        checkIn:
+          type: object
+          nullable: true
+          properties:
+            checkedInAt: { type: string, format: date-time }
+            deviceId: { type: string, nullable: true }
+            stationName: { type: string, nullable: true }
+            operatorName: { type: string, nullable: true }
+    PaginationMeta:
+      {
+        type: object,
+        required: [page, limit, total, totalPages],
+        properties:
+          {
+            page: { type: integer },
+            limit: { type: integer },
+            total: { type: integer },
+            totalPages: { type: integer },
+          },
+      }
+    ErrorResponse:
+      {
+        type: object,
+        required: [status, code, message],
+        properties:
+          {
+            status: { type: integer },
+            code: { type: string },
+            message: { type: string },
+            details: { type: object },
+          },
+      }
