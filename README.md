@@ -98,14 +98,13 @@ CI Windows vérifie Node 22, Prisma generate/validate, lint et build.
 Voir [l'architecture](docs/ARCHITECTURE.md) et le
 [déploiement](docs/DEPLOYMENT.md).
 
-# Private invitation file storage
+# Private invitation file storage (MongoDB GridFS)
 
-Invitation backgrounds and generated PNG/PDF artifacts are private objects. Development can use
-`STORAGE_LOCAL_DIR` (default `.storage`), but local files on Render are **not durable** across a
-restart or deployment. Production must configure an S3-compatible store with
-`STORAGE_ENDPOINT`, `STORAGE_BUCKET`, `STORAGE_REGION`, `STORAGE_ACCESS_KEY_ID`, and
-`STORAGE_SECRET_ACCESS_KEY`. The application emits a prominent warning when production starts
-without the complete persistent-storage configuration.
+Invitation backgrounds and generated PNG/PDF artifacts are private GridFS objects in the MongoDB
+database selected by `DATABASE_URL`. On Render configure `STORAGE_DRIVER=gridfs`,
+`GRIDFS_BUCKET=maryme_storage`, and `STORAGE_MAX_UPLOAD_BYTES=10485760`; no Persistent Disk is
+needed. Initialization is fail-fast and never silently falls back locally. `STORAGE_DRIVER=local`
+is reserved for development/tests and is rejected in production.
 
 Public invitation share links serve the image when an artifact has both an image and PDF, and fall
 back to the PDF otherwise. Only SHA-256 token hashes are stored. Existing share-link listings

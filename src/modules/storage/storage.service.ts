@@ -1,145 +1,196 @@
-import { Injectable, InternalServerErrorException, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+  NotFoundException,
+  OnApplicationShutdown,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createHash, createHmac } from 'crypto';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
+import { GridFSBucket, MongoClient, ObjectId } from 'mongodb';
 import { dirname, join } from 'path';
+import { finished } from 'stream/promises';
 
 export interface StoredObject {
   body: Buffer;
   contentType: string;
 }
 
+type StorageCode =
+  | 'STORAGE_CONNECTION_FAILED'
+  | 'STORAGE_WRITE_FAILED'
+  | 'STORAGE_READ_FAILED'
+  | 'STORAGE_DELETE_FAILED';
+
 @Injectable()
-export class StorageService implements OnModuleInit {
+export class StorageService implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(StorageService.name);
+  private client?: MongoClient;
+  private bucket?: GridFSBucket;
+  private dbName?: string;
+
   constructor(private readonly config: ConfigService) {}
 
-  onModuleInit(): void {
-    if (this.config.get<string>('NODE_ENV') === 'production' && !this.hasPersistentConfig()) {
-      this.logger.warn(
-        'WARNING: complete persistent object storage configuration is missing; local invitation files may be lost after restart/deploy. Configure STORAGE_ENDPOINT, STORAGE_REGION, STORAGE_BUCKET, STORAGE_ACCESS_KEY_ID and STORAGE_SECRET_ACCESS_KEY.',
-      );
+  private get driver(): 'gridfs' | 'local' {
+    return this.config.get<string>('STORAGE_DRIVER') === 'local' ? 'local' : 'gridfs';
+  }
+
+  private get bucketName(): string {
+    return this.config.get<string>('GRIDFS_BUCKET') ?? 'maryme_storage';
+  }
+
+  async onModuleInit(): Promise<void> {
+    if (this.driver === 'local') {
+      if (this.config.get<string>('NODE_ENV') === 'production') {
+        throw new Error(
+          'Local storage is forbidden in production; configure STORAGE_DRIVER=gridfs',
+        );
+      }
+      return;
+    }
+    try {
+      const uri = this.config.getOrThrow<string>('DATABASE_URL');
+      this.client = new MongoClient(uri);
+      await this.client.connect();
+      const db = this.client.db();
+      this.dbName = db.databaseName;
+      await db.command({ ping: 1 });
+      this.bucket = new GridFSBucket(db, { bucketName: this.bucketName });
+      await db
+        .collection(`${this.bucketName}.files`)
+        .createIndex({ 'metadata.key': 1 }, { unique: true });
+    } catch {
+      await this.client?.close().catch(() => undefined);
+      this.client = undefined;
+      this.bucket = undefined;
+      this.logger.error('STORAGE_CONNECTION_FAILED: MongoDB GridFS initialization failed');
+      throw new Error('STORAGE_CONNECTION_FAILED: required MongoDB GridFS storage is unavailable');
     }
   }
 
-  private hasPersistentConfig(): boolean {
-    return [
-      'STORAGE_ENDPOINT',
-      'STORAGE_REGION',
-      'STORAGE_BUCKET',
-      'STORAGE_ACCESS_KEY_ID',
-      'STORAGE_SECRET_ACCESS_KEY',
-    ].every((name) => !!this.config.get<string>(name));
+  async onApplicationShutdown(): Promise<void> {
+    await this.client?.close();
+    this.client = undefined;
+    this.bucket = undefined;
   }
 
-  status() {
-    const persistent = this.hasPersistentConfig();
+  private failure(code: StorageCode, message: string): InternalServerErrorException {
+    return new InternalServerErrorException({ code, message });
+  }
+
+  private requireBucket(): GridFSBucket {
+    if (!this.bucket || !this.client)
+      throw this.failure('STORAGE_CONNECTION_FAILED', 'Invitation storage is unavailable');
+    return this.bucket;
+  }
+
+  async status() {
+    if (this.driver === 'local') {
+      return {
+        backend: 'local-filesystem',
+        persistent: false,
+        connected: true,
+        bucket: null,
+        warning: 'Local storage is intended for development and tests only.',
+      };
+    }
+    let connected = false;
+    try {
+      await this.client?.db(this.dbName).command({ ping: 1 });
+      connected = Boolean(this.bucket);
+    } catch {
+      this.logger.error('STORAGE_CONNECTION_FAILED: MongoDB GridFS health ping failed');
+    }
     return {
-      backend: persistent ? 's3-compatible' : 'local-filesystem',
-      persistent,
-      warning:
-        this.config.get<string>('NODE_ENV') === 'production' && !persistent
-          ? 'Persistent invitation storage is not configured; uploaded backgrounds may be lost during deployment.'
-          : null,
+      backend: 'mongodb-gridfs',
+      persistent: true,
+      connected,
+      bucket: this.bucketName,
+      warning: connected ? null : 'MongoDB GridFS storage is unavailable.',
     };
   }
 
-  private get endpoint(): string | undefined {
-    return this.config.get<string>('STORAGE_ENDPOINT');
-  }
-  private get bucket(): string {
-    return this.config.get<string>('STORAGE_BUCKET') ?? 'maryme-private';
-  }
   private localPath(key: string): string {
-    return join(this.config.get<string>('STORAGE_LOCAL_DIR') ?? '.storage', this.bucket, key);
-  }
-  private hmac(key: Buffer | string, value: string): Buffer {
-    return createHmac('sha256', key).update(value).digest();
-  }
-  private sha(value: Buffer | string): string {
-    return createHash('sha256').update(value).digest('hex');
-  }
-  private async s3(
-    method: 'GET' | 'PUT' | 'DELETE',
-    key: string,
-    body?: Buffer,
-    contentType = 'application/octet-stream',
-  ): Promise<Response> {
-    const endpoint = this.endpoint!;
-    const region = this.config.get<string>('STORAGE_REGION') ?? 'us-east-1';
-    const accessKey = this.config.getOrThrow<string>('STORAGE_ACCESS_KEY_ID');
-    const secret = this.config.getOrThrow<string>('STORAGE_SECRET_ACCESS_KEY');
-    const path = `/${encodeURIComponent(this.bucket)}/${key.split('/').map(encodeURIComponent).join('/')}`;
-    const url = new URL(path, endpoint.endsWith('/') ? endpoint : `${endpoint}/`);
-    const now = new Date();
-    const stamp = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
-    const date = stamp.slice(0, 8);
-    const payloadHash = this.sha(body ?? Buffer.alloc(0));
-    const headers: Record<string, string> = {
-      host: url.host,
-      'x-amz-content-sha256': payloadHash,
-      'x-amz-date': stamp,
-    };
-    if (method === 'PUT') headers['content-type'] = contentType;
-    const signedHeaders = Object.keys(headers).sort().join(';');
-    const canonicalHeaders = Object.keys(headers)
-      .sort()
-      .map((name) => `${name}:${headers[name].trim()}\n`)
-      .join('');
-    const canonical = [method, url.pathname, '', canonicalHeaders, signedHeaders, payloadHash].join(
-      '\n',
-    );
-    const scope = `${date}/${region}/s3/aws4_request`;
-    const stringToSign = `AWS4-HMAC-SHA256\n${stamp}\n${scope}\n${this.sha(canonical)}`;
-    const dateKey = this.hmac(`AWS4${secret}`, date);
-    const signature = createHmac(
-      'sha256',
-      this.hmac(this.hmac(this.hmac(dateKey, region), 's3'), 'aws4_request'),
-    )
-      .update(stringToSign)
-      .digest('hex');
-    headers.authorization = `AWS4-HMAC-SHA256 Credential=${accessKey}/${scope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
-    const response = await fetch(url, {
-      method,
-      headers,
-      body: body ? new Uint8Array(body) : undefined,
-    });
-    if (!response.ok)
-      throw new InternalServerErrorException(`Object storage request failed (${response.status})`);
-    return response;
+    return join(this.config.get<string>('STORAGE_LOCAL_DIR') ?? '.storage', key);
   }
 
   async put(key: string, body: Buffer, contentType: string): Promise<void> {
-    if (this.endpoint) {
-      await this.s3('PUT', key, body, contentType);
+    if (this.driver === 'local') {
+      const path = this.localPath(key);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, body);
+      await writeFile(`${path}.content-type`, contentType);
       return;
     }
-    const path = this.localPath(key);
-    await mkdir(dirname(path), { recursive: true });
-    await writeFile(path, body);
-    await writeFile(`${path}.content-type`, contentType);
+    try {
+      const upload = this.requireBucket().openUploadStream(key, {
+        metadata: { key, contentType },
+        contentType,
+      });
+      upload.end(body);
+      await finished(upload);
+    } catch (error) {
+      if (error instanceof InternalServerErrorException) throw error;
+      throw this.failure('STORAGE_WRITE_FAILED', 'Unable to store invitation background');
+    }
   }
+
   async get(key: string): Promise<StoredObject> {
-    if (this.endpoint) {
-      const response = await this.s3('GET', key);
-      return {
-        body: Buffer.from(await response.arrayBuffer()),
-        contentType: response.headers.get('content-type') ?? 'application/octet-stream',
-      };
+    if (this.driver === 'local') {
+      try {
+        return {
+          body: await readFile(this.localPath(key)),
+          contentType: (await readFile(`${this.localPath(key)}.content-type`, 'utf8')).trim(),
+        };
+      } catch {
+        throw new NotFoundException({
+          code: 'STORAGE_OBJECT_NOT_FOUND',
+          message: 'Stored object not found',
+        });
+      }
     }
-    return {
-      body: await readFile(this.localPath(key)),
-      contentType: (await readFile(`${this.localPath(key)}.content-type`, 'utf8')).trim(),
-    };
+    try {
+      const bucket = this.requireBucket();
+      const file = await bucket.find({ 'metadata.key': key }).next();
+      if (!file)
+        throw new NotFoundException({
+          code: 'STORAGE_OBJECT_NOT_FOUND',
+          message: 'Stored object not found',
+        });
+      const chunks: Buffer[] = [];
+      const stream = bucket.openDownloadStream(file._id as ObjectId);
+      stream.on('data', (chunk: Buffer) => chunks.push(chunk));
+      await finished(stream);
+      return {
+        body: Buffer.concat(chunks),
+        contentType:
+          (file.metadata?.contentType as string | undefined) ??
+          file.contentType ??
+          'application/octet-stream',
+      };
+    } catch (error) {
+      if (error instanceof NotFoundException || error instanceof InternalServerErrorException)
+        throw error;
+      throw this.failure('STORAGE_READ_FAILED', 'Unable to read stored object');
+    }
   }
+
   async delete(key: string): Promise<void> {
-    if (this.endpoint) {
-      await this.s3('DELETE', key);
+    if (this.driver === 'local') {
+      await Promise.all([
+        unlink(this.localPath(key)).catch(() => undefined),
+        unlink(`${this.localPath(key)}.content-type`).catch(() => undefined),
+      ]);
       return;
     }
-    await Promise.all([
-      unlink(this.localPath(key)).catch(() => undefined),
-      unlink(`${this.localPath(key)}.content-type`).catch(() => undefined),
-    ]);
+    try {
+      const bucket = this.requireBucket();
+      const file = await bucket.find({ 'metadata.key': key }).next();
+      if (file) await bucket.delete(file._id as ObjectId);
+    } catch (error) {
+      if (error instanceof InternalServerErrorException) throw error;
+      throw this.failure('STORAGE_DELETE_FAILED', 'Unable to delete stored object');
+    }
   }
 }

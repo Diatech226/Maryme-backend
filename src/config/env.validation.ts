@@ -50,11 +50,13 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('30d'),
   COOKIE_SECURE: Joi.boolean().default(false),
   ARGON2_MEMORY_COST: Joi.number().integer().min(8192).default(19456),
-  STORAGE_ENDPOINT: Joi.string().uri().optional(),
-  STORAGE_REGION: Joi.string().trim().min(1).optional(),
-  STORAGE_BUCKET: Joi.string().trim().min(1).optional(),
-  STORAGE_ACCESS_KEY_ID: Joi.string().min(1).optional(),
-  STORAGE_SECRET_ACCESS_KEY: Joi.string().min(1).optional(),
+  STORAGE_DRIVER: Joi.string().valid('gridfs', 'local').default('gridfs'),
+  GRIDFS_BUCKET: Joi.string().trim().min(1).default('maryme_storage'),
+  STORAGE_LOCAL_DIR: Joi.string().when('STORAGE_DRIVER', {
+    is: 'local',
+    then: Joi.string().default('.storage'),
+    otherwise: Joi.forbidden(),
+  }),
   STORAGE_MAX_UPLOAD_BYTES: Joi.number()
     .integer()
     .positive()

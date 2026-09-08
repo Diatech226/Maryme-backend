@@ -29,17 +29,16 @@ numéros des utilisateurs existants, puis lancer `db push` sans `--force-reset`.
 
 ## Stockage privé des faire-part
 
-Le disque éphémère Render n'est **pas** un stockage durable. En production,
-configurer ensemble `STORAGE_ENDPOINT`, `STORAGE_REGION`, `STORAGE_BUCKET`,
-`STORAGE_ACCESS_KEY_ID` et `STORAGE_SECRET_ACCESS_KEY`. L'implémentation SigV4
-utilise un adressage path-style compatible avec MinIO et R2 ; pour AWS, utiliser
-un endpoint régional S3 qui accepte cet adressage. Tester PUT/GET/DELETE avec le
-fournisseur retenu avant mise en production. Aucun bucket ne doit être public.
+Le stockage officiel est MongoDB GridFS, dans la même base Atlas que Prisma. Sur Render configurer
+`DATABASE_URL=<MongoDB Atlas URI>`, `STORAGE_DRIVER=gridfs`,
+`GRIDFS_BUCKET=maryme_storage` et `STORAGE_MAX_UPLOAD_BYTES=10485760`. Les objets utilisent
+`maryme_storage.files` et `maryme_storage.chunks`; aucun Persistent Disk Render ni seconde base
+n'est nécessaire. Une connexion/ping impossible fait échouer le démarrage plutôt que de basculer
+silencieusement sur le filesystem local.
 
 Configurer aussi `STORAGE_MAX_UPLOAD_BYTES`, `PUBLIC_API_URL` (préfixe public
 complet, par exemple `https://api.example/api/v1`) et `SHARE_LINK_MAX_DAYS`.
-Le démarrage en production émet un avertissement si la configuration objet est
-absente ou incomplète, sans jamais afficher les identifiants ou secrets.
+Le healthcheck ping MongoDB sans écrire d'objet et expose l'état du bucket sans afficher de secret.
 
 La détection `stale` compare actuellement les snapshots `updatedAt` de l'invité,
 du design et du couple. Elle couvre tous les champs visuels sans migration et

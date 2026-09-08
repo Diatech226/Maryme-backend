@@ -87,49 +87,46 @@ export class CouponPoolService {
       });
     return { assigned: [], released: release.map((c) => c.number) };
   }
-  async manuallyAssign(guestId: string, numbers: number[], user: AuthUser) {
-    const guest = await this.prisma.guest.findUnique({ where: { id: guestId } });
-    if (!guest || guest.deletedAt) throw new NotFoundException('Guest not found');
-    assertCoupleAccess(user, guest.coupleId);
+  async assignNumbers(guestId: string, numbers: number[], db: Db = this.prisma) {
+    const guest = await db.guest.findUnique({ where: { id: guestId } });
+    if (!guest) throw new NotFoundException('Guest not found');
     if (numbers.length !== guest.coupons || new Set(numbers).size !== numbers.length)
       throw new ConflictException({
         code: 'COUPON_COUNT_MISMATCH',
         message: 'Le nombre de numéros doit correspondre à Guest.coupons, sans doublon.',
       });
-    const selected = await this.prisma.coupon.findMany({
+    const selected = await db.coupon.findMany({
       where: { coupleId: guest.coupleId, number: { in: numbers } },
     });
     if (selected.length !== numbers.length || selected.some((c) => c.status === CouponStatus.VOID))
-      throw new NotFoundException({
-        code: 'COUPON_NOT_FOUND',
-        message: 'Coupon inexistant ou annulé.',
-      });
-    if (selected.some((c) => c.status === CouponStatus.USED))
+      throw new NotFoundException({ code: 'COUPON_NOT_FOUND', message: 'Coupon inexistant.' });
+    if (
+      selected.some((c) => c.status === CouponStatus.USED) ||
+      (await db.coupon.count({ where: { guestId, status: CouponStatus.USED } }))
+    )
       throw new ConflictException({ code: 'COUPON_ALREADY_USED', message: 'Coupon déjà utilisé.' });
     if (selected.some((c) => c.guestId && c.guestId !== guestId))
       throw new ConflictException({
         code: 'COUPON_ALREADY_ASSIGNED',
         message: 'Coupon déjà attribué.',
       });
+    const now = new Date();
+    await db.coupon.updateMany({
+      where: { guestId, status: CouponStatus.ASSIGNED, number: { notIn: numbers } },
+      data: { guestId: null, status: CouponStatus.AVAILABLE, assignedAt: null, releasedAt: now },
+    });
+    await db.coupon.updateMany({
+      where: { coupleId: guest.coupleId, number: { in: numbers } },
+      data: { guestId, status: CouponStatus.ASSIGNED, assignedAt: now, releasedAt: null },
+    });
+    return numbers;
+  }
+  async manuallyAssign(guestId: string, numbers: number[], user: AuthUser) {
+    const guest = await this.prisma.guest.findUnique({ where: { id: guestId } });
+    if (!guest || guest.deletedAt) throw new NotFoundException('Guest not found');
+    assertCoupleAccess(user, guest.coupleId);
     await this.prisma.$transaction(async (tx) => {
-      if (await tx.coupon.count({ where: { guestId, status: CouponStatus.USED } }))
-        throw new ConflictException({
-          code: 'COUPON_ALREADY_USED',
-          message: 'Les coupons utilisés sont immuables.',
-        });
-      await tx.coupon.updateMany({
-        where: { guestId, status: CouponStatus.ASSIGNED, number: { notIn: numbers } },
-        data: {
-          guestId: null,
-          status: CouponStatus.AVAILABLE,
-          assignedAt: null,
-          releasedAt: new Date(),
-        },
-      });
-      await tx.coupon.updateMany({
-        where: { coupleId: guest.coupleId, number: { in: numbers } },
-        data: { guestId, status: CouponStatus.ASSIGNED, assignedAt: new Date(), releasedAt: null },
-      });
+      await this.assignNumbers(guestId, numbers, tx);
     });
     this.audit.record({
       userId: user.sub,

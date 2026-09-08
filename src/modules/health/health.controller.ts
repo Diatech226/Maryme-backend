@@ -18,7 +18,7 @@ export class HealthController {
       return {
         status: 'ok',
         database: 'connected',
-        storage: this.storage.status(),
+        storage: await this.storage.status(),
         timestamp: new Date().toISOString(),
       };
     } catch {
