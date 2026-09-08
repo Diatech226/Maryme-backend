@@ -21,6 +21,12 @@ export class CreateGuestDto {
   @IsEnum(GuestSide) side!: GuestSide;
   @IsOptional() @IsString() family?: string;
   @IsInt() @Min(1) @Max(20) coupons!: number;
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  couponNumbers?: number[];
   @IsEnum(GuestCategory) category!: GuestCategory;
   @IsOptional() @IsEnum(RsvpStatus) rsvpStatus?: RsvpStatus;
   @IsOptional() @IsEnum(DietaryRequirement) dietary?: DietaryRequirement;
@@ -47,6 +53,12 @@ export class UpdateGuestDto {
   @IsOptional() @IsEnum(GuestSide) side?: GuestSide;
   @IsOptional() @IsString() family?: string;
   @IsOptional() @IsInt() @Min(1) @Max(20) coupons?: number;
+  @IsOptional()
+  @IsArray()
+  @ArrayUnique()
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  couponNumbers?: number[];
   @IsOptional() @IsEnum(GuestCategory) category?: GuestCategory;
   @IsOptional() @IsEnum(RsvpStatus) rsvpStatus?: RsvpStatus;
   @IsOptional() @IsEnum(DietaryRequirement) dietary?: DietaryRequirement;

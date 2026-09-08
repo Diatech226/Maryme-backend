@@ -323,7 +323,15 @@ describe('Maryme lifecycle (e2e)', () => {
       .get(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/background`)
       .set(auth(token))
       .expect('Content-Type', /image\/png/)
+      .expect(({ body }) => expect(Buffer.from(body)).toEqual(png))
       .expect(200);
+    await request(app.getHttpServer())
+      .post(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/activate`)
+      .set(auth(token))
+      .expect(201)
+      .expect(({ body }) =>
+        expect(body.data).toMatchObject({ isActive: true, hasBackground: true }),
+      );
     await request(app.getHttpServer())
       .post(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/background`)
       .set(auth(token))
@@ -351,6 +359,26 @@ describe('Maryme lifecycle (e2e)', () => {
         .send({ firstName: 'Card', lastName: 'Guest', side: 'GROOM', coupons: 1, category: 'VIP' })
         .expect(201)
     ).body.data;
+    const numberedGuest = (
+      await request(app.getHttpServer())
+        .post(`/api/v1/couples/${couple.id}/guests`)
+        .set(auth(token))
+        .send({
+          firstName: 'Fatou',
+          lastName: 'Test',
+          side: 'GROOM',
+          coupons: 3,
+          couponNumbers: [7, 8, 9],
+          category: 'FRIENDS',
+        })
+        .expect(201)
+    ).body.data;
+    expect(numberedGuest.couponNumbers).toEqual([7, 8, 9]);
+    await request(app.getHttpServer())
+      .get(`/api/v1/guests/${numberedGuest.id}`)
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => expect(body.data.couponNumbers).toEqual([7, 8, 9]));
     const invitation = (
       await request(app.getHttpServer())
         .post(`/api/v1/guests/${guest.id}/invitations`)

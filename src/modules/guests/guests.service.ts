@@ -52,7 +52,7 @@ export class GuestsService {
       tableId?: string | null;
     },
   ): Promise<Prisma.GuestUncheckedCreateInput | Prisma.GuestUncheckedUpdateInput> {
-    const { tableNumber, tableId, ...fields } = dto;
+    const { tableNumber, tableId, couponNumbers: _couponNumbers, ...fields } = dto;
     if (tableId === undefined && tableNumber === undefined) {
       if (dto.side !== undefined && current?.tableId) {
         const currentTable = await tx.weddingTable.findUnique({ where: { id: current.tableId } });
@@ -143,13 +143,15 @@ export class GuestsService {
           invitations: { select: { id: true }, take: 1 },
           invitationArtifacts: { select: { id: true }, take: 1 },
           checkIn: { select: { id: true } },
+          couponNumbers: { select: { number: true }, orderBy: { number: 'asc' } },
         },
       }),
       this.prisma.guest.count({ where }),
     ]);
     return {
-      data: data.map(({ invitations, invitationArtifacts, checkIn, ...guest }) => ({
+      data: data.map(({ invitations, invitationArtifacts, checkIn, couponNumbers, ...guest }) => ({
         ...guest,
+        couponNumbers: couponNumbers.map((coupon) => coupon.number),
         hasInvitation: invitations.length > 0,
         hasArtifact: invitationArtifacts.length > 0,
         checkedIn: Boolean(checkIn),
@@ -166,8 +168,12 @@ export class GuestsService {
         data: { ...data, coupleId: id } as Prisma.GuestUncheckedCreateInput,
       });
       await this.couponPool.ensurePool(id, c.guestQuota, tx);
-      await this.couponPool.assignLowest(guest.id, guest.coupons, tx);
-      return guest;
+      if (dto.couponNumbers) await this.couponPool.assignNumbers(guest.id, dto.couponNumbers, tx);
+      else await this.couponPool.assignLowest(guest.id, guest.coupons, tx);
+      return tx.guest.findUniqueOrThrow({
+        where: { id: guest.id },
+        include: { couponNumbers: { select: { number: true }, orderBy: { number: 'asc' } } },
+      });
     });
     this.audit.record({
       userId: user.sub,
@@ -175,7 +181,7 @@ export class GuestsService {
       entityType: 'Guest',
       entityId: g.id,
     });
-    return g;
+    return { ...g, couponNumbers: g.couponNumbers.map((coupon) => coupon.number) };
   }
   async bulk(id: string, dto: BulkCreateGuestsDto, user: AuthUser) {
     const c = await this.couple(id, user);
@@ -459,10 +465,14 @@ export class GuestsService {
   async get(id: string, user: AuthUser) {
     const g = await this.prisma.guest.findFirst({
       where: { id, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+      include: { couponNumbers: { select: { number: true }, orderBy: { number: 'asc' } } },
     });
     if (!g) throw new NotFoundException('Guest not found');
     assertCoupleAccess(user, g.coupleId);
-    return g;
+    return {
+      ...g,
+      couponNumbers: (g.couponNumbers ?? []).map((coupon) => coupon.number),
+    };
   }
   async invitationStatus(id: string, user: AuthUser) {
     const guest = await this.prisma.guest.findFirst({
@@ -559,8 +569,14 @@ export class GuestsService {
     const result = await this.prisma.$transaction(async (tx) => {
       const data = await this.guestData(tx, g.coupleId, dto, g);
       const updated = await tx.guest.update({ where: { id }, data });
-      if (dto.coupons !== undefined) await this.couponPool.syncCount(id, dto.coupons, tx);
-      return updated;
+      if (dto.couponNumbers) await this.couponPool.assignNumbers(id, dto.couponNumbers, tx);
+      else if (dto.coupons !== undefined) await this.couponPool.syncCount(id, dto.coupons, tx);
+      if (dto.couponNumbers === undefined && dto.coupons === undefined)
+        return { ...updated, couponNumbers: g.couponNumbers };
+      return tx.guest.findUniqueOrThrow({
+        where: { id: updated.id },
+        include: { couponNumbers: { select: { number: true }, orderBy: { number: 'asc' } } },
+      });
     });
     this.audit.record({
       userId: user.sub,
@@ -568,7 +584,12 @@ export class GuestsService {
       entityType: 'Guest',
       entityId: id,
     });
-    return result;
+    return {
+      ...result,
+      couponNumbers: result.couponNumbers.map((coupon) =>
+        typeof coupon === 'number' ? coupon : coupon.number,
+      ),
+    };
   }
   async remove(id: string, user: AuthUser) {
     await this.get(id, user);

@@ -155,8 +155,26 @@ export class InvitationDesignsService {
       });
     const max = this.config.get<number>('STORAGE_MAX_UPLOAD_BYTES') ?? 10 * 1024 * 1024;
     validateUpload(file, max, ['image/png', 'image/jpeg', 'image/webp']);
+    this.logger.log(
+      JSON.stringify({
+        event: 'INVITATION_BACKGROUND_UPLOAD_START',
+        stage: 'validation-complete',
+        designId: id,
+        coupleId,
+        mimeType: file.mimetype,
+        size: file.size,
+      }),
+    );
     const key = `couples/${coupleId}/designs/${id}/background-${randomUUID()}`;
-    await this.storage.put(key, file.buffer, file.mimetype);
+    try {
+      await this.storage.put(key, file.buffer, file.mimetype);
+      this.logger.log(
+        JSON.stringify({ event: 'INVITATION_BACKGROUND_STORAGE_OK', designId: id, coupleId }),
+      );
+    } catch (error) {
+      this.logUploadFailure('gridfs-write', id, coupleId, file, error);
+      throw error;
+    }
     let result;
     try {
       result = await this.prisma.invitationDesign.update({
@@ -166,8 +184,16 @@ export class InvitationDesignsService {
           backgroundMimeType: file.mimetype,
         },
       });
+      this.logger.log(
+        JSON.stringify({ event: 'INVITATION_BACKGROUND_DB_OK', designId: id, coupleId }),
+      );
     } catch (error) {
-      await this.storage.delete(key);
+      await this.storage
+        .delete(key)
+        .catch((cleanupError) =>
+          this.logUploadFailure('compensation-delete', id, coupleId, file, cleanupError),
+        );
+      this.logUploadFailure('prisma-update', id, coupleId, file, error);
       throw error;
     }
     // The database must point at the new object before the previous one is removed.
@@ -187,7 +213,38 @@ export class InvitationDesignsService {
         code: 'INVITATION_BACKGROUND_MISSING',
         message: 'Design has no background',
       });
-    return this.storage.get(design.backgroundObjectKey);
+    const stored = await this.storage.get(design.backgroundObjectKey);
+    this.logger.log(
+      JSON.stringify({ event: 'INVITATION_BACKGROUND_READ_OK', designId: id, coupleId }),
+    );
+    return stored;
+  }
+  private logUploadFailure(
+    stage: string,
+    designId: string,
+    coupleId: string,
+    file: UploadFile,
+    error: unknown,
+  ) {
+    const response =
+      error && typeof error === 'object' && 'getResponse' in error
+        ? (error as { getResponse(): unknown }).getResponse()
+        : undefined;
+    const errorCode =
+      response && typeof response === 'object' && 'code' in response
+        ? String((response as { code: unknown }).code)
+        : 'INTERNAL_ERROR';
+    this.logger.error(
+      JSON.stringify({
+        event: 'INVITATION_BACKGROUND_UPLOAD_FAILED',
+        stage,
+        designId,
+        coupleId,
+        mimeType: file.mimetype,
+        size: file.size,
+        errorCode,
+      }),
+    );
   }
   private log(user: AuthUser, action: string, id: string, metadata: Prisma.InputJsonValue) {
     this.audit.record({

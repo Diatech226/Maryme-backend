@@ -1065,6 +1065,14 @@ components:
                 type: string,
                 enum: [STANDARD, VEGETARIAN, VEGAN, GLUTEN_FREE, CHILD_MENU, HALAL, NO_SEAFOOD],
               },
+            coupons: { type: integer, minimum: 1, maximum: 20 },
+            couponNumbers:
+              {
+                type: array,
+                uniqueItems: true,
+                items: { type: integer, minimum: 1 },
+                description: Exact persisted numbered coupons; when supplied its length must equal coupons.,
+              },
             tableId:
               {
                 type: string,
@@ -1076,6 +1084,17 @@ components:
               },
           },
       }
+    TableSummary:
+      type: object
+      required:
+        [totalTables, groomTables, brideTables, totalCapacity, occupiedSeats, remainingSeats]
+      properties:
+        totalTables: { type: integer, example: 40 }
+        groomTables: { type: integer, example: 25 }
+        brideTables: { type: integer, example: 15 }
+        totalCapacity: { type: integer, nullable: true, example: 400 }
+        occupiedSeats: { type: integer, example: 312 }
+        remainingSeats: { type: integer, nullable: true, example: 88 }
     Invitation:
       {
         type: object,
