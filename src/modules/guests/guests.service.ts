@@ -41,6 +41,47 @@ export class GuestsService {
       )._sum.coupons ?? 0
     );
   }
+  private async guestData(
+    tx: Prisma.TransactionClient | PrismaService,
+    coupleId: string,
+    dto: CreateGuestDto | UpdateGuestDto,
+    current?: { id: string; side: CreateGuestDto['side']; coupons: number },
+  ): Promise<Prisma.GuestUncheckedCreateInput | Prisma.GuestUncheckedUpdateInput> {
+    const { tableNumber, tableId, ...fields } = dto;
+    if (tableId === undefined && tableNumber === undefined)
+      return fields as Prisma.GuestUncheckedUpdateInput;
+    const table = await tx.weddingTable.findFirst({
+      where: {
+        coupleId,
+        ...(tableId ? { id: tableId } : { number: tableNumber }),
+      },
+      include: {
+        guests: {
+          where: {
+            ...(current ? { id: { not: current.id } } : {}),
+            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+          },
+          select: { coupons: true },
+        },
+      },
+    });
+    if (!table)
+      throw new NotFoundException(
+        `Wedding table ${tableNumber ?? tableId} not found for this couple`,
+      );
+    const side = dto.side ?? current?.side;
+    if (side && table.side !== side)
+      throw new ConflictException('Guest side does not match table side');
+    const coupons = dto.coupons ?? current?.coupons ?? 1;
+    const occupied = table.guests.reduce((sum, guest) => sum + guest.coupons, 0);
+    if (table.capacity != null && occupied + coupons > table.capacity)
+      throw new ConflictException('Table capacity exceeded');
+    return {
+      ...fields,
+      tableId: table.id,
+      tableNumber: String(table.number),
+    } as Prisma.GuestUncheckedUpdateInput;
+  }
   async list(id: string, q: GuestQueryDto, user: AuthUser) {
     await this.couple(id, user);
     const and: Prisma.GuestWhereInput[] = [
@@ -107,7 +148,10 @@ export class GuestsService {
     const c = await this.couple(id, user);
     assertQuota(await this.used(id), dto.coupons, c.guestQuota);
     const g = await this.prisma.$transaction(async (tx) => {
-      const guest = await tx.guest.create({ data: { ...dto, coupleId: id } });
+      const data = await this.guestData(tx, id, dto);
+      const guest = await tx.guest.create({
+        data: { ...data, coupleId: id } as Prisma.GuestUncheckedCreateInput,
+      });
       await this.couponPool.ensurePool(id, c.guestQuota, tx);
       await this.couponPool.assignLowest(guest.id, guest.coupons, tx);
       return guest;
@@ -145,7 +189,10 @@ export class GuestsService {
         await tx.guest.deleteMany({ where: { coupleId: id } });
       }
       for (const guest of dto.guests) {
-        const created = await tx.guest.create({ data: { ...guest, coupleId: id } });
+        const data = await this.guestData(tx, id, guest);
+        const created = await tx.guest.create({
+          data: { ...data, coupleId: id } as Prisma.GuestUncheckedCreateInput,
+        });
         await this.couponPool.assignLowest(created.id, created.coupons, tx);
       }
     });
@@ -220,6 +267,7 @@ export class GuestsService {
         'plusOne',
         'plusOneName',
         'isChild',
+        'tableId',
         'tableNumber',
         'phone',
         'email',
@@ -309,16 +357,22 @@ export class GuestsService {
         let guestId: string;
         let count: number;
         if (plan.action === 'CREATE') {
-          const data = this.toCreate(plan.row);
+          const input = this.toCreate(plan.row);
+          const data = await this.guestData(tx, id, input);
           const guest = await tx.guest.create({
-            data: { ...data, externalRef: plan.row.externalRef, coupleId: id },
+            data: {
+              ...data,
+              externalRef: plan.row.externalRef,
+              coupleId: id,
+            } as Prisma.GuestUncheckedCreateInput,
           });
           guestId = guest.id;
           count = guest.coupons;
         } else {
+          const data = await this.guestData(tx, id, plan.changes as UpdateGuestDto, plan.guest);
           const guest = await tx.guest.update({
             where: { id: plan.guest!.id },
-            data: plan.changes,
+            data,
           });
           guestId = guest.id;
           count = guest.coupons;
@@ -350,6 +404,7 @@ export class GuestsService {
       plusOne: row.plusOne,
       plusOneName: row.plusOneName,
       isChild: row.isChild,
+      tableId: row.tableId,
       tableNumber: row.tableNumber,
       phone: row.phone,
       email: row.email,
@@ -489,7 +544,8 @@ export class GuestsService {
       assertQuota((await this.used(g.coupleId)) - g.coupons, dto.coupons, c.guestQuota);
     }
     const result = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.guest.update({ where: { id }, data: dto });
+      const data = await this.guestData(tx, g.coupleId, dto, g);
+      const updated = await tx.guest.update({ where: { id }, data });
       if (dto.coupons !== undefined) await this.couponPool.syncCount(id, dto.coupons, tx);
       return updated;
     });

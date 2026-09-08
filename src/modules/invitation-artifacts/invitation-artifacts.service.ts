@@ -66,6 +66,8 @@ export class InvitationArtifactsService {
       where: { id: designId, coupleId: invitation.coupleId },
     });
     if (!design) throw new BadRequestException('Design does not belong to the invitation couple');
+    if (design.mode === 'UPLOADED' && !design.backgroundObjectKey)
+      throw new BadRequestException('Uploaded design has no persisted background');
     const base = `couples/${invitation.coupleId}/artifacts/${randomUUID()}`;
     const uploaded: string[] = [];
     try {

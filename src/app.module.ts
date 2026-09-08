@@ -19,6 +19,7 @@ import { CouponsModule } from './modules/coupons/coupons.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { InvitationDesignsModule } from './modules/invitation-designs/invitation-designs.module';
 import { InvitationArtifactsModule } from './modules/invitation-artifacts/invitation-artifacts.module';
+import { TablesModule } from './modules/tables/tables.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -37,6 +38,7 @@ import { InvitationArtifactsModule } from './modules/invitation-artifacts/invita
     InvitationsModule,
     InvitationDesignsModule,
     InvitationArtifactsModule,
+    TablesModule,
     CheckInsModule,
     CouponsModule,
     HealthModule,

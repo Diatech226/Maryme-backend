@@ -23,7 +23,7 @@ export class CheckInsService {
     const invitation = await this.prisma.invitation.findUnique({
       where: { tokenHash: this.invitations.hash(token) },
       include: {
-        guest: { include: { couponNumbers: { select: { number: true } } } },
+        guest: { include: { couponNumbers: { select: { number: true } }, table: true } },
         couple: true,
       },
     });
@@ -138,7 +138,11 @@ export class CheckInsService {
         side: invitation.guest.side,
         category: invitation.guest.category,
         rsvpStatus: invitation.guest.rsvpStatus,
-        tableNumber: invitation.guest.tableNumber,
+        tableNumber:
+          invitation.guest.table?.number ??
+          (invitation.guest.tableNumber && /^\d+$/.test(invitation.guest.tableNumber)
+            ? Number(invitation.guest.tableNumber)
+            : invitation.guest.tableNumber),
         assignedSeats: invitation.guest.assignedSeats,
         coupons: invitation.guest.coupons,
         couponNumbers: invitation.guest.couponNumbers.map((coupon) => coupon.number),
@@ -210,6 +214,7 @@ export class CheckInsService {
                 firstName: true,
                 lastName: true,
                 tableNumber: true,
+                table: { select: { number: true } },
                 assignedSeats: true,
                 coupons: true,
                 side: true,

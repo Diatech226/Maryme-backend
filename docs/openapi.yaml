@@ -622,6 +622,104 @@ paths:
           },
         ]
       responses: { '201': { description: id and revokedAt } }
+  /couples/{coupleId}/tables:
+    parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+    get:
+      summary: List numeric wedding tables with occupancy
+      responses: { '200': { description: Wedding tables } }
+    post:
+      summary: Create a numeric wedding table
+      requestBody:
+        {
+          required: true,
+          content:
+            { application/json: { schema: { $ref: '#/components/schemas/WeddingTableInput' } } },
+        }
+      responses:
+        { '201': { description: Created }, '409': { $ref: '#/components/responses/Error' } }
+  /couples/{coupleId}/tables/bulk:
+    parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+    post:
+      summary: Create or update several tables by number
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [tables],
+                      properties:
+                        {
+                          tables:
+                            {
+                              type: array,
+                              items: { $ref: '#/components/schemas/WeddingTableInput' },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+      responses: { '201': { description: Configured } }
+  /couples/{coupleId}/tables/generate:
+    parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+    post:
+      summary: Generate a complete numeric table plan from configurable ranges
+      requestBody:
+        {
+          required: true,
+          content:
+            { application/json: { schema: { $ref: '#/components/schemas/TableGeneration' } } },
+        }
+      responses:
+        { '201': { description: Generated }, '400': { $ref: '#/components/responses/Error' } }
+  /couples/{coupleId}/tables/summary:
+    parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+    get:
+      summary: Table counts, capacities and occupied coupon seats
+      responses: { '200': { description: Seating summary } }
+  /couples/{coupleId}/tables/{tableId}:
+    parameters:
+      - { $ref: '#/components/parameters/CoupleId' }
+      - { in: path, name: tableId, required: true, schema: { type: string } }
+    patch:
+      requestBody:
+        {
+          required: true,
+          content:
+            { application/json: { schema: { $ref: '#/components/schemas/WeddingTableInput' } } },
+        }
+      responses: { '200': { description: Updated } }
+    delete:
+      responses:
+        { '204': { description: Deleted }, '409': { $ref: '#/components/responses/Error' } }
+  /couples/{coupleId}/tables/{tableId}/guests/{guestId}:
+    parameters:
+      - { $ref: '#/components/parameters/CoupleId' }
+      - { in: path, name: tableId, required: true, schema: { type: string } }
+      - { in: path, name: guestId, required: true, schema: { type: string } }
+    patch:
+      summary: Assign a guest to the table, enforcing side and coupon capacity
+      requestBody:
+        {
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      properties: { allowSideOverride: { type: boolean, default: false } },
+                    },
+                },
+            },
+        }
+      responses:
+        { '200': { description: Assigned }, '409': { $ref: '#/components/responses/Error' } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -638,6 +736,31 @@ components:
         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
       }
   schemas:
+    WeddingTableInput:
+      type: object
+      required: [number, side]
+      properties:
+        number: { type: integer, minimum: 1 }
+        side: { type: string, enum: [GROOM, BRIDE] }
+        capacity: { type: integer, minimum: 1, nullable: true }
+    TableGeneration:
+      type: object
+      required: [totalTables, rules]
+      properties:
+        totalTables: { type: integer, minimum: 1 }
+        replace: { type: boolean, default: false }
+        rules:
+          type: array
+          items:
+            type: object
+            required: [from, to]
+            properties:
+              from: { type: integer, minimum: 1 }
+              to: { type: integer, minimum: 1 }
+              side: { type: string, enum: [GROOM, BRIDE] }
+              oddSide: { type: string, enum: [GROOM, BRIDE] }
+              evenSide: { type: string, enum: [GROOM, BRIDE] }
+              capacity: { type: integer, minimum: 1 }
     OverlayItem:
       type: object
       additionalProperties: false

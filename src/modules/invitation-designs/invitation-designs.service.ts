@@ -60,6 +60,8 @@ export class InvitationDesignsService {
     await this.couple(coupleId, user);
     if (dto.mode === InvitationDesignMode.GENERATED && !dto.templateKey)
       throw new BadRequestException('templateKey is required for a generated design');
+    if (dto.mode === InvitationDesignMode.UPLOADED && dto.templateKey)
+      throw new BadRequestException('templateKey cannot be used by an uploaded design');
     const d = await this.prisma.invitationDesign.create({
       data: {
         ...dto,
@@ -72,29 +74,51 @@ export class InvitationDesignsService {
     return this.present(d);
   }
   async update(coupleId: string, id: string, dto: UpdateInvitationDesignDto, user: AuthUser) {
-    await this.design(coupleId, id, user);
+    const current = await this.design(coupleId, id, user);
+    const mode = dto.mode ?? current.mode;
+    const templateKey = dto.templateKey ?? current.templateKey;
+    if (mode === InvitationDesignMode.GENERATED && !templateKey)
+      throw new BadRequestException('templateKey is required for a generated design');
+    if (mode === InvitationDesignMode.UPLOADED && dto.templateKey)
+      throw new BadRequestException('templateKey cannot be used by an uploaded design');
     const d = await this.prisma.invitationDesign.update({
       where: { id },
       data: {
         ...dto,
+        ...(dto.mode === InvitationDesignMode.UPLOADED ? { templateKey: null } : {}),
+        ...(dto.mode === InvitationDesignMode.GENERATED
+          ? { backgroundObjectKey: null, backgroundMimeType: null }
+          : {}),
         overlayConfig: dto.overlayConfig as unknown as Prisma.InputJsonValue | undefined,
         contentConfig: dto.contentConfig as Prisma.InputJsonValue | undefined,
       },
     });
+    if (dto.mode === InvitationDesignMode.GENERATED && current.backgroundObjectKey)
+      await this.storage
+        .delete(current.backgroundObjectKey)
+        .catch(() => this.logger.warn('Previous invitation background cleanup failed'));
     this.log(user, 'INVITATION_DESIGN_UPDATED', id, { coupleId });
     return this.present(d);
   }
   async remove(coupleId: string, id: string, user: AuthUser) {
-    await this.design(coupleId, id, user);
+    const design = await this.design(coupleId, id, user);
     if (await this.prisma.invitationArtifact.count({ where: { designId: id } }))
       throw new ConflictException({
         code: 'DESIGN_IN_USE',
         message: 'Design is used by an artifact',
       });
     await this.prisma.invitationDesign.delete({ where: { id } });
+    if (design.backgroundObjectKey)
+      await this.storage
+        .delete(design.backgroundObjectKey)
+        .catch(() => this.logger.warn('Deleted design background cleanup failed'));
   }
   async activate(coupleId: string, id: string, user: AuthUser) {
-    await this.design(coupleId, id, user);
+    const design = await this.design(coupleId, id, user);
+    if (design.mode === InvitationDesignMode.UPLOADED && !design.backgroundObjectKey)
+      throw new BadRequestException('Upload a background before activating this design');
+    if (design.mode === InvitationDesignMode.GENERATED && !design.templateKey)
+      throw new BadRequestException('Generated design has no template');
     const previous = this.activationLocks.get(coupleId) ?? Promise.resolve();
     let release!: () => void;
     const current = new Promise<void>((resolve) => (release = resolve));
@@ -127,6 +151,7 @@ export class InvitationDesignsService {
         where: { id },
         data: {
           mode: InvitationDesignMode.UPLOADED,
+          templateKey: null,
           backgroundObjectKey: key,
           backgroundMimeType: file.mimetype,
         },

@@ -135,6 +135,7 @@ model Couple {
   rsvpMessage          String?
   invitationDesigns    InvitationDesign[]
   invitationArtifacts  InvitationArtifact[]
+  weddingTables        WeddingTable[]
 
   @@index([status])
 }
@@ -155,6 +156,8 @@ model Guest {
   plusOneName         String?
   isChild             Boolean              @default(false)
   tableNumber         String?
+  tableId             String?              @db.ObjectId
+  table               WeddingTable?        @relation(fields: [tableId], references: [id], onDelete: NoAction)
   assignedSeats       String[]             @default([])
   phone               String?
   email               String?
@@ -174,6 +177,23 @@ model Guest {
   @@index([rsvpStatus])
   @@index([family])
   @@index([coupleId, externalRef])
+  @@index([tableId])
+}
+
+model WeddingTable {
+  id        String    @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId  String    @db.ObjectId
+  couple    Couple    @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  number    Int
+  side      GuestSide
+  capacity  Int?
+  guests    Guest[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([coupleId, number])
+  @@index([coupleId])
+  @@index([coupleId, side])
 }
 
 model Coupon {
