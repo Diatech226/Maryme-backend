@@ -45,11 +45,22 @@ export class GuestsService {
     tx: Prisma.TransactionClient | PrismaService,
     coupleId: string,
     dto: CreateGuestDto | UpdateGuestDto,
-    current?: { id: string; side: CreateGuestDto['side']; coupons: number },
+    current?: {
+      id: string;
+      side: CreateGuestDto['side'];
+      coupons: number;
+      tableId?: string | null;
+    },
   ): Promise<Prisma.GuestUncheckedCreateInput | Prisma.GuestUncheckedUpdateInput> {
     const { tableNumber, tableId, ...fields } = dto;
-    if (tableId === undefined && tableNumber === undefined)
+    if (tableId === undefined && tableNumber === undefined) {
+      if (dto.side !== undefined && current?.tableId) {
+        const currentTable = await tx.weddingTable.findUnique({ where: { id: current.tableId } });
+        if (currentTable && currentTable.side !== dto.side)
+          return { ...fields, tableId: null, tableNumber: null };
+      }
       return fields as Prisma.GuestUncheckedUpdateInput;
+    }
     const table = await tx.weddingTable.findFirst({
       where: {
         coupleId,
@@ -486,7 +497,7 @@ export class GuestsService {
       guestId: guest.id,
       generated: Boolean(invitation),
       artifactReady: Boolean(artifact),
-      cardStatus: !invitation ? 'NOT_GENERATED' : stale ? 'STALE' : 'GENERATED',
+      cardStatus: !artifact ? 'NOT_GENERATED' : stale ? 'STALE' : 'GENERATED',
       sent: Boolean(guest.invitationSentDate),
       sentAt: guest.invitationSentDate,
       checkedIn: Boolean(guest.checkIn),

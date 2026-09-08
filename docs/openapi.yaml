@@ -110,6 +110,7 @@ paths:
               name: rsvpStatus,
               schema: { type: string, enum: [CONFIRMED, PENDING, DECLINED] },
             },
+            { in: query, name: tableNumber, schema: { type: string } },
             { in: query, name: hasPhone, schema: { type: boolean } },
             { in: query, name: invitationSent, schema: { type: boolean } },
             { in: query, name: checkedIn, schema: { type: boolean } },
@@ -486,7 +487,7 @@ paths:
       - { in: path, name: designId, required: true, schema: { type: string } }
     get: { summary: Get a safe invitation design, responses: { '200': { description: Design } } }
     patch:
-      summary: Update an invitation design
+      summary: Update an invitation design without changing its immutable mode
       requestBody:
         content:
           { application/json: { schema: { $ref: '#/components/schemas/UpdateInvitationDesign' } } }
@@ -504,7 +505,8 @@ paths:
       - { $ref: '#/components/parameters/CoupleId' }
       - { in: path, name: designId, required: true, schema: { type: string } }
     post:
-      summary: Upload a private PNG, JPEG, WebP, or PDF background
+      summary: Upload a private PNG, JPEG, or WebP background (maximum 10 MiB by default)
+      description: The new object is persisted before the database pointer changes; a failed upload leaves the previous background intact. PDF is intentionally rejected because browser canvas rendering requires a raster image.
       requestBody:
         required: true
         content:
@@ -523,7 +525,6 @@ paths:
             image/png: { schema: { type: string, format: binary } }
             image/jpeg: { schema: { type: string, format: binary } }
             image/webp: { schema: { type: string, format: binary } }
-            application/pdf: { schema: { type: string, format: binary } }
   /invitations/{invitationId}/artifact:
     post:
       summary: Store an artifact derived from the invitation's guest and couple
@@ -720,6 +721,28 @@ paths:
         }
       responses:
         { '200': { description: Assigned }, '409': { $ref: '#/components/responses/Error' } }
+  /couples/{coupleId}/guests/{guestId}/table:
+    parameters:
+      - { $ref: '#/components/parameters/CoupleId' }
+      - { in: path, name: guestId, required: true, schema: { type: string } }
+    patch:
+      summary: Assign or unassign a guest using WeddingTable as the source of truth
+      description: Send a WeddingTable ID to assign, or null to unassign. tableNumber is maintained only as a legacy projection.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tableId]
+              properties:
+                tableId: { type: string, nullable: true }
+                allowSideOverride: { type: boolean, default: false }
+      responses:
+        {
+          '200': { description: Assigned or unassigned },
+          '409': { $ref: '#/components/responses/Error' },
+        }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -774,7 +797,6 @@ components:
     OverlayConfig:
       type: object
       additionalProperties: false
-      required: [qr]
       properties:
         qr: { $ref: '#/components/schemas/OverlayItem' }
         guestName: { $ref: '#/components/schemas/OverlayItem' }
@@ -786,11 +808,17 @@ components:
     CreateInvitationDesign:
       type: object
       additionalProperties: false
+      description: For UPLOADED, templateKey is forbidden and overlayConfig may be empty; upload a raster background before activation. For GENERATED, templateKey is required. Create a second design instead of changing modes.
       required: [name, mode, overlayConfig]
       properties:
         name: { type: string, minLength: 1 }
         mode: { type: string, enum: [GENERATED, UPLOADED] }
-        templateKey: { type: string, minLength: 1, description: Required when mode is GENERATED }
+        templateKey:
+          {
+            type: string,
+            minLength: 1,
+            description: Required for GENERATED and forbidden for UPLOADED,
+          }
         canvasWidth: { type: integer, minimum: 1 }
         canvasHeight: { type: integer, minimum: 1 }
         overlayConfig: { $ref: '#/components/schemas/OverlayConfig' }
@@ -798,7 +826,7 @@ components:
     UpdateInvitationDesign:
       type: object
       additionalProperties: false
-      description: All properties are optional on PATCH.
+      description: All properties are optional on PATCH. mode cannot be changed; create another design so imported files are never destroyed.
       properties:
         name: { type: string }
         mode: { type: string, enum: [GENERATED, UPLOADED] }

@@ -21,7 +21,7 @@ export class OverlayItemDto {
   @IsOptional() @IsNumber() @Min(0) @Max(1) height?: number;
 }
 export class OverlayConfigDto {
-  @ValidateNested() @Type(() => OverlayItemDto) qr!: OverlayItemDto;
+  @IsOptional() @ValidateNested() @Type(() => OverlayItemDto) qr?: OverlayItemDto;
   @IsOptional() @ValidateNested() @Type(() => OverlayItemDto) guestName?: OverlayItemDto;
   @IsOptional() @ValidateNested() @Type(() => OverlayItemDto) family?: OverlayItemDto;
   @IsOptional() @ValidateNested() @Type(() => OverlayItemDto) category?: OverlayItemDto;

@@ -91,6 +91,10 @@ export class InvitationDesignsController {
     @Res() res: Response,
   ) {
     const file = await this.s.downloadBackground(c, id, u);
-    res.type(file.contentType).send(file.body);
+    res
+      .type(file.contentType)
+      .set('Cache-Control', 'private, no-store')
+      .set('X-Content-Type-Options', 'nosniff')
+      .send(file.body);
   }
 }

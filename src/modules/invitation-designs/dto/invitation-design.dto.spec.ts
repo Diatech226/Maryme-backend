@@ -21,6 +21,17 @@ describe('CreateInvitationDesignDto', () => {
     await expect(errors(valid)).resolves.toHaveLength(0);
   });
 
+  it('accepts an uploaded design with empty configs and no templateKey', async () => {
+    await expect(
+      errors({
+        name: 'Faire-part principal',
+        mode: 'UPLOADED',
+        overlayConfig: {},
+        contentConfig: {},
+      }),
+    ).resolves.toHaveLength(0);
+  });
+
   it('requires a non-empty name', async () => {
     const { name: _name, ...missing } = valid;
     await expect(errors(missing)).resolves.not.toHaveLength(0);
