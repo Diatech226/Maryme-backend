@@ -112,3 +112,90 @@ describe('GuestsService invitation delivery', () => {
     );
   });
 });
+
+describe('GuestsService atomic table updates', () => {
+  const user = { sub: 'user-1', role: UserRole.COUPLE, coupleId: 'couple-1' };
+
+  function harness() {
+    const guest = {
+      id: 'guest-1',
+      coupleId: 'couple-1',
+      firstName: 'Fatou',
+      side: 'BRIDE',
+      coupons: 3,
+      tableId: null as string | null,
+      tableNumber: null as string | null,
+    };
+    const tables = [
+      { id: 'bride-table', coupleId: 'couple-1', number: 18, side: 'BRIDE', capacity: 10 },
+      { id: 'groom-table', coupleId: 'couple-1', number: 19, side: 'GROOM', capacity: 10 },
+    ];
+    const tx = {
+      weddingTable: {
+        findFirst: jest.fn(({ where }) => {
+          const table = tables.find(
+            (candidate) =>
+              candidate.coupleId === where.coupleId &&
+              (where.id ? candidate.id === where.id : candidate.number === where.number),
+          );
+          return table ? { ...table, guests: [] } : null;
+        }),
+        findUnique: jest.fn(({ where }) => tables.find((table) => table.id === where.id)),
+      },
+      guest: {
+        update: jest.fn(({ data }) => Object.assign(guest, data)),
+      },
+    };
+    const prisma = {
+      couple: { findFirst: jest.fn().mockResolvedValue({ id: 'couple-1', guestQuota: 100 }) },
+      guest: {
+        findFirst: jest.fn().mockImplementation(() => ({ ...guest })),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { coupons: 3 } }),
+      },
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const service = new GuestsService(
+      prisma as never,
+      { record: jest.fn() } as never,
+      { syncCount: jest.fn() } as never,
+    );
+    return { service, guest, tx };
+  }
+
+  it('assigns, changes side with a compatible table, and unassigns in coherent updates', async () => {
+    const { service, guest, tx } = harness();
+    await service.update('guest-1', { tableId: 'bride-table' }, user);
+    expect(guest).toMatchObject({ tableId: 'bride-table', tableNumber: '18' });
+
+    await service.update('guest-1', { side: 'GROOM' as never, tableId: 'groom-table' }, user);
+    expect(guest).toMatchObject({ side: 'GROOM', tableId: 'groom-table', tableNumber: '19' });
+
+    await service.update('guest-1', { tableId: null }, user);
+    expect(guest).toMatchObject({ tableId: null, tableNumber: null });
+    expect(tx.guest.update).toHaveBeenCalledTimes(3);
+  });
+
+  it('automatically unassigns when side changes without a replacement table', async () => {
+    const { service, guest } = harness();
+    Object.assign(guest, { tableId: 'bride-table', tableNumber: '18' });
+    await service.update('guest-1', { side: 'GROOM' as never }, user);
+    expect(guest).toMatchObject({ side: 'GROOM', tableId: null, tableNumber: null });
+  });
+
+  it('does not persist any guest fields when the requested table is full', async () => {
+    const { service, guest, tx } = harness();
+    (tx.weddingTable.findFirst as jest.Mock).mockResolvedValueOnce({
+      id: 'bride-table',
+      coupleId: 'couple-1',
+      number: 18,
+      side: 'BRIDE',
+      capacity: 10,
+      guests: [{ coupons: 8 }],
+    });
+    await expect(
+      service.update('guest-1', { firstName: 'Changed', tableId: 'bride-table' }, user),
+    ).rejects.toThrow('Table capacity exceeded');
+    expect(tx.guest.update).not.toHaveBeenCalled();
+    expect(guest.firstName).toBe('Fatou');
+  });
+});

@@ -219,7 +219,7 @@ export class TablesService {
             _sum: { coupons: true },
           })
         )._sum.coupons ?? 0;
-      if (dto.capacity < seats)
+      if (dto.capacity != null && dto.capacity < seats)
         throw new ConflictException('Capacity is lower than occupied seats');
     }
     return this.prisma.weddingTable.update({ where: { id: tableId }, data: dto });

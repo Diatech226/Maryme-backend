@@ -69,6 +69,9 @@ export class InvitationDesignsService {
     const d = await this.prisma.invitationDesign.create({
       data: {
         ...dto,
+        // An imported design is only activatable after its background is safely stored.
+        // Keep this explicit so a future schema/default change cannot skip that workflow.
+        ...(dto.mode === InvitationDesignMode.UPLOADED ? { isActive: false } : {}),
         overlayConfig: dto.overlayConfig as unknown as Prisma.InputJsonValue,
         contentConfig: dto.contentConfig as Prisma.InputJsonValue | undefined,
         coupleId,

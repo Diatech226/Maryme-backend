@@ -18,12 +18,17 @@ describe('TablesService', () => {
       coupleId: string;
       number: number;
       side: GuestSide;
-      capacity?: number;
+      capacity?: number | null;
     }> = [];
     const tx = {
       guest: { count: jest.fn().mockResolvedValue(0) },
       weddingTable: {
-        deleteMany: jest.fn(),
+        deleteMany: jest.fn(({ where }) => {
+          const retained: number[] = where.number?.notIn ?? [];
+          for (let index = rows.length - 1; index >= 0; index--)
+            if (!retained.includes(rows[index].number)) rows.splice(index, 1);
+          return { count: 0 };
+        }),
         upsert: jest.fn(({ create }) => {
           const old = rows.find((r) => r.number === create.number);
           if (old) Object.assign(old, create);
@@ -31,13 +36,25 @@ describe('TablesService', () => {
         }),
         findMany: jest
           .fn()
-          .mockImplementation(() => Promise.resolve([...rows].sort((a, b) => a.number - b.number))),
+          .mockImplementation(() =>
+            Promise.resolve(
+              [...rows]
+                .sort((a, b) => a.number - b.number)
+                .map((row) => ({ ...row, capacity: row.capacity ?? null, guests: [] })),
+            ),
+          ),
       },
     };
     const prisma = {
       couple: { findFirst: jest.fn().mockResolvedValue({ id: 'couple' }) },
       $transaction: jest.fn((callback) => callback(tx)),
-      weddingTable: {},
+      weddingTable: {
+        findMany: jest.fn(() =>
+          [...rows]
+            .sort((a, b) => a.number - b.number)
+            .map((row) => ({ ...row, capacity: row.capacity ?? null, guests: [] })),
+        ),
+      },
     };
     return { service: new TablesService(prisma as never), rows, tx };
   }
@@ -50,6 +67,56 @@ describe('TablesService', () => {
     ]);
     expect(tables.filter((t) => t.side === GuestSide.GROOM).map((t) => t.number)).toEqual([
       1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+    ]);
+  });
+
+  it('replaces a 40-table configuration with exactly 30 tables', async () => {
+    const { service, rows } = harness();
+    for (let number = 1; number <= 40; number++)
+      rows.push({
+        id: `t${number}`,
+        coupleId: 'couple',
+        number,
+        side: number % 2 ? GuestSide.GROOM : GuestSide.BRIDE,
+      });
+    const result = await service.configure(
+      'couple',
+      {
+        groomTableNumbers: Array.from({ length: 15 }, (_, index) => index * 2 + 1),
+        brideTableNumbers: Array.from({ length: 15 }, (_, index) => index * 2 + 2),
+        defaultCapacity: 10,
+        replace: true,
+      },
+      user,
+    );
+    expect(result).toHaveLength(30);
+    expect(rows).toHaveLength(30);
+    expect(rows.map((table) => table.number).sort((a, b) => a - b)).toEqual(
+      Array.from({ length: 30 }, (_, index) => index + 1),
+    );
+  });
+
+  it('accepts null capacity and presents null remaining seats', async () => {
+    const table = {
+      id: 't18',
+      coupleId: 'couple',
+      number: 18,
+      side: GuestSide.BRIDE,
+      capacity: 10 as number | null,
+    };
+    const prisma = {
+      couple: { findFirst: jest.fn().mockResolvedValue({ id: 'couple' }) },
+      guest: { aggregate: jest.fn().mockResolvedValue({ _sum: { coupons: 7 } }) },
+      weddingTable: {
+        findFirst: jest.fn().mockResolvedValue(table),
+        update: jest.fn(({ data }) => Object.assign(table, data)),
+        findMany: jest.fn(() => [{ ...table, guests: [{ coupons: 7 }] }]),
+      },
+    };
+    const service = new TablesService(prisma as never);
+    await service.update('couple', 't18', { capacity: null }, user);
+    await expect(service.list('couple', user)).resolves.toEqual([
+      expect.objectContaining({ capacity: null, occupiedSeats: 7, remainingSeats: null }),
     ]);
   });
 
