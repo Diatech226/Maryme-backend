@@ -32,6 +32,18 @@ export class StorageService implements OnModuleInit {
     ].every((name) => !!this.config.get<string>(name));
   }
 
+  status() {
+    const persistent = this.hasPersistentConfig();
+    return {
+      backend: persistent ? 's3-compatible' : 'local-filesystem',
+      persistent,
+      warning:
+        this.config.get<string>('NODE_ENV') === 'production' && !persistent
+          ? 'Persistent invitation storage is not configured; uploaded backgrounds may be lost during deployment.'
+          : null,
+    };
+  }
+
   private get endpoint(): string | undefined {
     return this.config.get<string>('STORAGE_ENDPOINT');
   }

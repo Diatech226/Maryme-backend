@@ -14,7 +14,7 @@ export function configureApplication(app: INestApplication): void {
   app.enableCors({
     origin: config.getOrThrow<string[]>('app.origins'),
     credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   });
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),

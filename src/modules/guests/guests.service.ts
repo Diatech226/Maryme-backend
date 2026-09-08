@@ -61,6 +61,8 @@ export class GuestsService {
       }
       return fields as Prisma.GuestUncheckedUpdateInput;
     }
+    if (tableId === null || tableNumber === null)
+      return { ...fields, tableId: null, tableNumber: null } as Prisma.GuestUncheckedUpdateInput;
     const table = await tx.weddingTable.findFirst({
       where: {
         coupleId,

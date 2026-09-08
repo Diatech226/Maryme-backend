@@ -24,11 +24,25 @@ export function validateUpload(
   maxBytes: number,
   allowed = Object.keys(signatures),
 ): asserts file is UploadFile {
-  if (!file) throw new BadRequestException('File is required');
+  if (!file)
+    throw new BadRequestException({
+      code: 'INVITATION_BACKGROUND_MISSING',
+      message: 'File is required',
+    });
   const mime = file.mimetype.toLowerCase();
   if (!allowed.includes(mime) || !signatures[mime]?.(file.buffer))
-    throw new BadRequestException('Unsupported or invalid file content');
+    throw new BadRequestException({
+      code: 'INVITATION_BACKGROUND_UNSUPPORTED_TYPE',
+      message: 'Unsupported or invalid file content',
+    });
   if (!extensions[mime].includes(extname(file.originalname).toLowerCase()))
-    throw new BadRequestException('File extension does not match its content');
-  if (file.size > maxBytes) throw new BadRequestException('File is too large');
+    throw new BadRequestException({
+      code: 'INVITATION_BACKGROUND_UNSUPPORTED_TYPE',
+      message: 'File extension does not match its content',
+    });
+  if (file.size > maxBytes)
+    throw new BadRequestException({
+      code: 'INVITATION_BACKGROUND_TOO_LARGE',
+      message: 'File is too large',
+    });
 }

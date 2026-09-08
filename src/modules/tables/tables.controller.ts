@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -19,6 +20,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import {
   AssignGuestTableDto,
   BulkWeddingTablesDto,
+  ConfigureWeddingTablesDto,
   CreateWeddingTableDto,
   GenerateWeddingTablesDto,
   UpdateWeddingTableDto,
@@ -58,6 +60,13 @@ export class TablesController {
   ) {
     return this.service.generate(c, d, u);
   }
+  @Put('configuration') configuration(
+    @Param('coupleId') c: string,
+    @Body() d: ConfigureWeddingTablesDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.service.configure(c, d, u);
+  }
   @Patch(':tableId') update(
     @Param('coupleId') c: string,
     @Param('tableId') id: string,
@@ -72,15 +81,6 @@ export class TablesController {
     @CurrentUser() u: AuthUser,
   ) {
     return this.service.remove(c, id, u);
-  }
-  @Patch(':tableId/guests/:guestId') assign(
-    @Param('coupleId') c: string,
-    @Param('tableId') tableId: string,
-    @Param('guestId') guestId: string,
-    @Body() d: AssignGuestTableDto,
-    @CurrentUser() u: AuthUser,
-  ) {
-    return this.service.assign(c, guestId, { ...d, tableId }, u);
   }
 }
 

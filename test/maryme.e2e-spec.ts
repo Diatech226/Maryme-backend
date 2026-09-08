@@ -342,7 +342,7 @@ describe('Maryme lifecycle (e2e)', () => {
       .set(auth(token))
       .send({ mode: 'GENERATED', templateKey: 'classic' })
       .expect(409)
-      .expect(({ body }) => expect(body.code).toBe('DESIGN_MODE_IMMUTABLE'));
+      .expect(({ body }) => expect(body.code).toBe('INVITATION_DESIGN_WRONG_MODE'));
 
     const guest = (
       await request(app.getHttpServer())
