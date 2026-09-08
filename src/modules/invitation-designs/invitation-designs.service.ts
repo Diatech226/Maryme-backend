@@ -16,6 +16,7 @@ import { UploadFile, validateUpload } from '../storage/upload-validation';
 import { CreateInvitationDesignDto, UpdateInvitationDesignDto } from './dto/invitation-design.dto';
 @Injectable()
 export class InvitationDesignsService {
+  private readonly activationLocks = new Map<string, Promise<void>>();
   constructor(
     private prisma: PrismaService,
     private audit: AuditService,
@@ -36,16 +37,22 @@ export class InvitationDesignsService {
     if (!d) throw new NotFoundException('Invitation design not found');
     return d;
   }
+  private present<T extends { backgroundObjectKey: string | null }>(design: T) {
+    const { backgroundObjectKey, ...safe } = design;
+    return { ...safe, hasBackground: !!backgroundObjectKey };
+  }
   list(coupleId: string, user: AuthUser) {
     return this.couple(coupleId, user).then(() =>
-      this.prisma.invitationDesign.findMany({
-        where: { coupleId },
-        orderBy: { createdAt: 'desc' },
-      }),
+      this.prisma.invitationDesign
+        .findMany({
+          where: { coupleId },
+          orderBy: { createdAt: 'desc' },
+        })
+        .then((rows) => rows.map((row) => this.present(row))),
     );
   }
   get(coupleId: string, id: string, user: AuthUser) {
-    return this.design(coupleId, id, user);
+    return this.design(coupleId, id, user).then((design) => this.present(design));
   }
   async create(coupleId: string, dto: CreateInvitationDesignDto, user: AuthUser) {
     await this.couple(coupleId, user);
@@ -60,7 +67,7 @@ export class InvitationDesignsService {
       },
     });
     this.log(user, 'INVITATION_DESIGN_CREATED', d.id, { coupleId });
-    return d;
+    return this.present(d);
   }
   async update(coupleId: string, id: string, dto: UpdateInvitationDesignDto, user: AuthUser) {
     await this.design(coupleId, id, user);
@@ -73,7 +80,7 @@ export class InvitationDesignsService {
       },
     });
     this.log(user, 'INVITATION_DESIGN_UPDATED', id, { coupleId });
-    return d;
+    return this.present(d);
   }
   async remove(coupleId: string, id: string, user: AuthUser) {
     await this.design(coupleId, id, user);
@@ -86,15 +93,25 @@ export class InvitationDesignsService {
   }
   async activate(coupleId: string, id: string, user: AuthUser) {
     await this.design(coupleId, id, user);
-    const [, d] = await this.prisma.$transaction([
-      this.prisma.invitationDesign.updateMany({
-        where: { coupleId, isActive: true },
-        data: { isActive: false },
-      }),
-      this.prisma.invitationDesign.update({ where: { id }, data: { isActive: true } }),
-    ]);
-    this.log(user, 'INVITATION_DESIGN_ACTIVATED', id, { coupleId });
-    return d;
+    const previous = this.activationLocks.get(coupleId) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => (release = resolve));
+    this.activationLocks.set(coupleId, current);
+    await previous;
+    try {
+      const [, d] = await this.prisma.$transaction([
+        this.prisma.invitationDesign.updateMany({
+          where: { coupleId, isActive: true },
+          data: { isActive: false },
+        }),
+        this.prisma.invitationDesign.update({ where: { id }, data: { isActive: true } }),
+      ]);
+      this.log(user, 'INVITATION_DESIGN_ACTIVATED', id, { coupleId });
+      return this.present(d);
+    } finally {
+      release();
+      if (this.activationLocks.get(coupleId) === current) this.activationLocks.delete(coupleId);
+    }
   }
   async background(coupleId: string, id: string, file: UploadFile | undefined, user: AuthUser) {
     const d = await this.design(coupleId, id, user);
@@ -112,7 +129,12 @@ export class InvitationDesignsService {
       },
     });
     this.log(user, 'INVITATION_BACKGROUND_UPLOADED', id, { coupleId, mimeType: file.mimetype });
-    return result;
+    return this.present(result);
+  }
+  async downloadBackground(coupleId: string, id: string, user: AuthUser) {
+    const design = await this.design(coupleId, id, user);
+    if (!design.backgroundObjectKey) throw new NotFoundException('Design has no background');
+    return this.storage.get(design.backgroundObjectKey);
   }
   private log(user: AuthUser, action: string, id: string, metadata: Prisma.InputJsonValue) {
     this.audit.record({

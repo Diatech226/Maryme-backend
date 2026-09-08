@@ -1,4 +1,4 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { Injectable, InternalServerErrorException, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash, createHmac } from 'crypto';
 import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
@@ -10,8 +10,17 @@ export interface StoredObject {
 }
 
 @Injectable()
-export class StorageService {
+export class StorageService implements OnModuleInit {
+  private readonly logger = new Logger(StorageService.name);
   constructor(private readonly config: ConfigService) {}
+
+  onModuleInit(): void {
+    if (this.config.get<string>('NODE_ENV') === 'production' && !this.endpoint) {
+      this.logger.warn(
+        'WARNING: persistent object storage is not configured. Invitation files may be lost after restart/deploy.',
+      );
+    }
+  }
 
   private get endpoint(): string | undefined {
     return this.config.get<string>('STORAGE_ENDPOINT');

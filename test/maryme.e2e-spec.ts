@@ -238,4 +238,215 @@ describe('Maryme lifecycle (e2e)', () => {
       .expect(200)
       .expect(({ body }) => expect(body.accessToken).toBeDefined());
   });
+  it('persists private designs, image/PDF artifacts, stale state and revocable shares', async () => {
+    const email = 'cards@maryme.test';
+    const couple = (
+      await request(app.getHttpServer())
+        .post('/api/v1/couples')
+        .set(auth(admin))
+        .send(coupleDto(email, '+22670000005', 'CouplePassword123!'))
+        .expect(201)
+    ).body.data;
+    await request(app.getHttpServer())
+      .post(`/api/v1/couples/${couple.id}/authorize`)
+      .set(auth(admin))
+      .expect(201);
+    const token = (
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email, password: 'CouplePassword123!' })
+        .expect(200)
+    ).body.accessToken;
+    await request(app.getHttpServer())
+      .patch(`/api/v1/couples/${couple.id}`)
+      .set(auth(token))
+      .send({ invitationIntroText: 'Bienvenue', invitationFooterText: 'À bientôt' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .patch(`/api/v1/couples/${couple.id}`)
+      .set(auth(token))
+      .send({ id: couple.id })
+      .expect(400);
+
+    const overlay = { qr: { enabled: true, x: 0.1, y: 0.1 } };
+    const generated = (
+      await request(app.getHttpServer())
+        .post(`/api/v1/couples/${couple.id}/invitation-designs`)
+        .set(auth(token))
+        .send({ name: 'Maryme', mode: 'GENERATED', templateKey: 'classic', overlayConfig: overlay })
+        .expect(201)
+    ).body.data;
+    await request(app.getHttpServer())
+      .get(`/api/v1/couples/${couple.id}/invitation-designs`)
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => expect(body.data[0].backgroundObjectKey).toBeUndefined());
+    await request(app.getHttpServer())
+      .patch(`/api/v1/couples/${couple.id}/invitation-designs/${generated.id}`)
+      .set(auth(token))
+      .send({ name: 'Maryme updated' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/api/v1/couples/${couple.id}/invitation-designs/${generated.id}/activate`)
+      .set(auth(token))
+      .expect(201);
+    const uploaded = (
+      await request(app.getHttpServer())
+        .post(`/api/v1/couples/${couple.id}/invitation-designs`)
+        .set(auth(token))
+        .send({ name: 'Upload', mode: 'UPLOADED', overlayConfig: overlay })
+        .expect(201)
+    ).body.data;
+    const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
+    const pdf = Buffer.from('%PDF-1.4\n%%EOF');
+    await request(app.getHttpServer())
+      .post(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/background`)
+      .set(auth(token))
+      .attach('file', png, { filename: 'card.png', contentType: 'image/png' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .get(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/background`)
+      .set(auth(token))
+      .expect('Content-Type', /image\/png/)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/background`)
+      .set(auth(token))
+      .attach('file', pdf, { filename: 'card.pdf', contentType: 'application/pdf' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .get(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/background`)
+      .set(auth(token))
+      .expect('Content-Type', /application\/pdf/)
+      .expect(200);
+
+    const guest = (
+      await request(app.getHttpServer())
+        .post(`/api/v1/couples/${couple.id}/guests`)
+        .set(auth(token))
+        .send({ firstName: 'Card', lastName: 'Guest', side: 'GROOM', coupons: 1, category: 'VIP' })
+        .expect(201)
+    ).body.data;
+    const invitation = (
+      await request(app.getHttpServer())
+        .post(`/api/v1/guests/${guest.id}/invitations`)
+        .set(auth(token))
+        .send({})
+        .expect(201)
+    ).body.data;
+    const artifact = (
+      await request(app.getHttpServer())
+        .post(`/api/v1/invitations/${invitation.id}/artifact`)
+        .set(auth(token))
+        .field('designId', uploaded.id)
+        .attach('image', png, { filename: 'invitation.png', contentType: 'image/png' })
+        .attach('pdf', pdf, { filename: 'invitation.pdf', contentType: 'application/pdf' })
+        .expect(201)
+    ).body.data;
+    expect(artifact).toMatchObject({
+      guestId: guest.id,
+      hasImage: true,
+      hasPdf: true,
+      stale: false,
+    });
+    expect(artifact.imageObjectKey).toBeUndefined();
+    await request(app.getHttpServer())
+      .get(`/api/v1/guests/${guest.id}/invitation-artifacts`)
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => expect(body.data[0].stale).toBe(false));
+    await request(app.getHttpServer())
+      .get(`/api/v1/couples/${couple.id}/invitation-artifacts`)
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => expect(body.data.data[0].id).toBe(artifact.id));
+    await request(app.getHttpServer())
+      .get(`/api/v1/invitation-artifacts/${artifact.id}/download?format=image`)
+      .set(auth(token))
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`/api/v1/invitation-artifacts/${artifact.id}/download?format=pdf`)
+      .set(auth(token))
+      .expect('Content-Type', /application\/pdf/)
+      .expect(200);
+    const changedGuest = await prisma.guest.update({
+      where: { id: guest.id },
+      data: { notes: 'Guest changed' },
+    });
+    await request(app.getHttpServer())
+      .get(`/api/v1/guests/${guest.id}/invitation-artifacts`)
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => expect(body.data[0].stale).toBe(true));
+    const currentDesign = await prisma.invitationDesign.findUniqueOrThrow({
+      where: { id: uploaded.id },
+    });
+    const currentCouple = await prisma.couple.findUniqueOrThrow({ where: { id: couple.id } });
+    await prisma.invitationArtifact.update({
+      where: { id: artifact.id },
+      data: {
+        guestUpdatedAt: changedGuest.updatedAt,
+        designUpdatedAt: currentDesign.updatedAt,
+        coupleUpdatedAt: currentCouple.updatedAt,
+      },
+    });
+    await request(app.getHttpServer())
+      .patch(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}`)
+      .set(auth(token))
+      .send({ name: 'Upload updated' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`/api/v1/guests/${guest.id}/invitation-artifacts`)
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => expect(body.data[0].stale).toBe(true));
+    const changedDesign = await prisma.invitationDesign.findUniqueOrThrow({
+      where: { id: uploaded.id },
+    });
+    await prisma.invitationArtifact.update({
+      where: { id: artifact.id },
+      data: { designUpdatedAt: changedDesign.updatedAt },
+    });
+    await request(app.getHttpServer())
+      .patch(`/api/v1/couples/${couple.id}`)
+      .set(auth(token))
+      .send({ dressCode: 'Chic' })
+      .expect(200);
+    await request(app.getHttpServer())
+      .get(`/api/v1/guests/${guest.id}/invitation-artifacts`)
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => expect(body.data[0].stale).toBe(true));
+
+    const share = (
+      await request(app.getHttpServer())
+        .post(`/api/v1/invitation-artifacts/${artifact.id}/share-link`)
+        .set(auth(token))
+        .send({})
+        .expect(201)
+    ).body.data;
+    expect(share.id).toBeDefined();
+    const shareToken = share.shareUrl.split('/').pop();
+    await request(app.getHttpServer())
+      .get(`/api/v1/invitation-artifacts/${artifact.id}/share-links`)
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data[0].id).toBe(share.id);
+        expect(body.data[0].tokenHash).toBeUndefined();
+        expect(body.data[0].shareUrl).toBeUndefined();
+      });
+    await request(app.getHttpServer())
+      .get(`/api/v1/public/invitations/share/${shareToken}`)
+      .expect('Cache-Control', 'private, no-store')
+      .expect('Content-Type', /image\/png/)
+      .expect(200);
+    await request(app.getHttpServer())
+      .post(`/api/v1/invitation-share-links/${share.id}/revoke`)
+      .set(auth(token))
+      .expect(201);
+    await request(app.getHttpServer())
+      .get(`/api/v1/public/invitations/share/${shareToken}`)
+      .expect(410);
+  });
 });

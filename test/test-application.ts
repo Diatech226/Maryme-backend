@@ -26,6 +26,9 @@ export async function cleanTestDatabase(prisma: PrismaService): Promise<void> {
     );
   }
   await prisma.checkIn.deleteMany();
+  await prisma.invitationShareLink.deleteMany();
+  await prisma.invitationArtifact.deleteMany();
+  await prisma.invitationDesign.deleteMany();
   await prisma.invitation.deleteMany();
   await prisma.coupon.deleteMany();
   await prisma.guest.deleteMany();

@@ -1,10 +1,4 @@
-import {
-  BadRequestException,
-  ForbiddenException,
-  GoneException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { createHash, randomBytes, randomUUID } from 'crypto';
@@ -14,7 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { StorageService, StoredObject } from '../storage/storage.service';
 import { UploadFile, validateUpload } from '../storage/upload-validation';
-import { CreateShareLinkDto } from './dto/artifact.dto';
+import { ArtifactListQueryDto, CreateShareLinkDto } from './dto/artifact.dto';
 @Injectable()
 export class InvitationArtifactsService {
   constructor(
@@ -35,6 +29,22 @@ export class InvitationArtifactsService {
     assertCoupleAccess(user, a.coupleId);
     return a;
   }
+  private present(a: any) {
+    return {
+      id: a.id,
+      guestId: a.guestId,
+      invitationId: a.invitationId,
+      designId: a.designId,
+      generatedAt: a.generatedAt,
+      hasImage: !!a.imageObjectKey,
+      hasPdf: !!a.pdfObjectKey,
+      stale:
+        a.guest.updatedAt > a.guestUpdatedAt ||
+        a.design.updatedAt > a.designUpdatedAt ||
+        !a.coupleUpdatedAt ||
+        a.couple.updatedAt > a.coupleUpdatedAt,
+    };
+  }
   async create(
     invitationId: string,
     designId: string,
@@ -48,7 +58,7 @@ export class InvitationArtifactsService {
     if (pdf) validateUpload(pdf, max, ['application/pdf']);
     const invitation = await this.prisma.invitation.findUnique({
       where: { id: invitationId },
-      include: { guest: true },
+      include: { guest: true, couple: true },
     });
     if (!invitation) throw new NotFoundException('Invitation not found');
     assertCoupleAccess(user, invitation.coupleId);
@@ -79,6 +89,7 @@ export class InvitationArtifactsService {
           pdfMimeType: pdf?.mimetype,
           guestUpdatedAt: invitation.guest.updatedAt,
           designUpdatedAt: design.updatedAt,
+          coupleUpdatedAt: invitation.couple.updatedAt,
         },
       });
       this.log(user, 'INVITATION_ARTIFACT_CREATED', a.id, {
@@ -86,7 +97,16 @@ export class InvitationArtifactsService {
         guestId: a.guestId,
         designId,
       });
-      return a;
+      return {
+        id: a.id,
+        guestId: a.guestId,
+        invitationId: a.invitationId,
+        designId: a.designId,
+        generatedAt: a.generatedAt,
+        hasImage: !!a.imageObjectKey,
+        hasPdf: !!a.pdfObjectKey,
+        stale: false,
+      };
     } catch (e) {
       await Promise.all(uploaded.map((k) => this.storage.delete(k)));
       throw e;
@@ -98,18 +118,57 @@ export class InvitationArtifactsService {
     assertCoupleAccess(user, g.coupleId);
     const rows = await this.prisma.invitationArtifact.findMany({
       where: { guestId },
-      include: { design: true },
+      include: { guest: true, design: true, couple: true },
       orderBy: { generatedAt: 'desc' },
     });
-    return rows.map((a) => ({
-      id: a.id,
-      invitationId: a.invitationId,
-      designId: a.designId,
-      generatedAt: a.generatedAt,
-      hasImage: !!a.imageObjectKey,
-      hasPdf: !!a.pdfObjectKey,
-      stale: g.updatedAt > a.guestUpdatedAt || a.design.updatedAt > a.designUpdatedAt,
-    }));
+    return rows.map((a) => this.present(a));
+  }
+  async listForCouple(coupleId: string, query: ArtifactListQueryDto, user: AuthUser) {
+    assertCoupleAccess(user, coupleId);
+    if (!(await this.prisma.couple.findUnique({ where: { id: coupleId } })))
+      throw new NotFoundException('Couple not found');
+    const where = { coupleId, ...(query.guestId ? { guestId: query.guestId } : {}) };
+    const include = { guest: true, design: true, couple: true } as const;
+    if (query.stale === undefined) {
+      const [rows, total] = await this.prisma.$transaction([
+        this.prisma.invitationArtifact.findMany({
+          where,
+          include,
+          orderBy: { generatedAt: 'desc' },
+          skip: (query.page - 1) * query.limit,
+          take: query.limit,
+        }),
+        this.prisma.invitationArtifact.count({ where }),
+      ]);
+      return {
+        data: rows.map((row) => this.present(row)),
+        meta: {
+          page: query.page,
+          limit: query.limit,
+          total,
+          totalPages: Math.ceil(total / query.limit),
+        },
+      };
+    }
+    const matching = (
+      await this.prisma.invitationArtifact.findMany({
+        where,
+        include,
+        orderBy: { generatedAt: 'desc' },
+      })
+    )
+      .map((row) => this.present(row))
+      .filter((artifact) => artifact.stale === query.stale);
+    const total = matching.length;
+    return {
+      data: matching.slice((query.page - 1) * query.limit, query.page * query.limit),
+      meta: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
   }
   async download(id: string, format: 'image' | 'pdf', user: AuthUser) {
     const a = await this.artifact(id, user);
@@ -145,7 +204,25 @@ export class InvitationArtifactsService {
       expiresAt: expiresAt.toISOString(),
     });
     const base = this.config.get<string>('PUBLIC_API_URL') ?? 'http://localhost:4000/api/v1';
-    return { shareUrl: `${base.replace(/\/$/, '')}/public/invitations/share/${token}`, expiresAt };
+    return {
+      id: link.id,
+      shareUrl: `${base.replace(/\/$/, '')}/public/invitations/share/${token}`,
+      expiresAt,
+    };
+  }
+  async shareLinks(artifactId: string, user: AuthUser) {
+    await this.artifact(artifactId, user);
+    const links = await this.prisma.invitationShareLink.findMany({
+      where: { artifactId, revokedAt: null, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+    });
+    // Raw validation tokens are never persisted, so an old URL cannot be reconstructed.
+    return links.map(({ id, expiresAt, createdAt, openedAt }) => ({
+      id,
+      expiresAt,
+      createdAt,
+      openedAt,
+    }));
   }
   async publicOpen(token: string): Promise<StoredObject> {
     const link = await this.prisma.invitationShareLink.findUnique({
@@ -181,7 +258,7 @@ export class InvitationArtifactsService {
       data: { revokedAt: new Date() },
     });
     this.log(user, 'INVITATION_SHARE_LINK_REVOKED', id, { artifactId: link.artifactId });
-    return out;
+    return { id: out.id, revokedAt: out.revokedAt };
   }
   private log(user: AuthUser, action: string, id: string, metadata: Prisma.InputJsonValue) {
     this.audit.record({

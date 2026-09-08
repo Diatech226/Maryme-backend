@@ -254,6 +254,7 @@ model InvitationArtifact {
   pdfMimeType      String?
   guestUpdatedAt   DateTime
   designUpdatedAt  DateTime
+  coupleUpdatedAt  DateTime?
   generatedAt      DateTime              @default(now())
   lastDownloadedAt DateTime?
   lastShareAt      DateTime?
