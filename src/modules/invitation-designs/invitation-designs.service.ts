@@ -36,7 +36,11 @@ export class InvitationDesignsService {
   private async design(coupleId: string, id: string, user: AuthUser) {
     await this.couple(coupleId, user);
     const d = await this.prisma.invitationDesign.findFirst({ where: { id, coupleId } });
-    if (!d) throw new NotFoundException('Invitation design not found');
+    if (!d)
+      throw new NotFoundException({
+        code: 'INVITATION_DESIGN_NOT_FOUND',
+        message: 'Invitation design not found',
+      });
     return d;
   }
   private present<T extends { backgroundObjectKey: string | null }>(design: T) {
@@ -77,7 +81,7 @@ export class InvitationDesignsService {
     const current = await this.design(coupleId, id, user);
     if (dto.mode !== undefined && dto.mode !== current.mode)
       throw new ConflictException({
-        code: 'DESIGN_MODE_IMMUTABLE',
+        code: 'INVITATION_DESIGN_WRONG_MODE',
         message: 'Create a separate design to try another mode; existing uploads are preserved',
       });
     const mode = dto.mode ?? current.mode;
@@ -113,7 +117,10 @@ export class InvitationDesignsService {
   async activate(coupleId: string, id: string, user: AuthUser) {
     const design = await this.design(coupleId, id, user);
     if (design.mode === InvitationDesignMode.UPLOADED && !design.backgroundObjectKey)
-      throw new BadRequestException('Upload a background before activating this design');
+      throw new BadRequestException({
+        code: 'INVITATION_BACKGROUND_MISSING',
+        message: 'Upload a background before activating this design',
+      });
     if (design.mode === InvitationDesignMode.GENERATED && !design.templateKey)
       throw new BadRequestException('Generated design has no template');
     const previous = this.activationLocks.get(coupleId) ?? Promise.resolve();
@@ -140,7 +147,7 @@ export class InvitationDesignsService {
     const d = await this.design(coupleId, id, user);
     if (d.mode !== InvitationDesignMode.UPLOADED)
       throw new ConflictException({
-        code: 'DESIGN_MODE_IMMUTABLE',
+        code: 'INVITATION_DESIGN_WRONG_MODE',
         message: 'Backgrounds can only be uploaded to an UPLOADED design',
       });
     const max = this.config.get<number>('STORAGE_MAX_UPLOAD_BYTES') ?? 10 * 1024 * 1024;
@@ -172,7 +179,11 @@ export class InvitationDesignsService {
   }
   async downloadBackground(coupleId: string, id: string, user: AuthUser) {
     const design = await this.design(coupleId, id, user);
-    if (!design.backgroundObjectKey) throw new NotFoundException('Design has no background');
+    if (!design.backgroundObjectKey)
+      throw new NotFoundException({
+        code: 'INVITATION_BACKGROUND_MISSING',
+        message: 'Design has no background',
+      });
     return this.storage.get(design.backgroundObjectKey);
   }
   private log(user: AuthUser, action: string, id: string, metadata: Prisma.InputJsonValue) {

@@ -16,15 +16,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
         : status === 400
           ? 'VALIDATION_ERROR'
           : HttpStatus[status];
-    response
-      .status(status)
-      .json({
-        statusCode: status,
-        code,
-        message,
-        details: object.message instanceof Array ? object.message : undefined,
-        path: request.url,
-        timestamp: new Date().toISOString(),
-      });
+    response.status(status).json({
+      ...object,
+      statusCode: status,
+      code,
+      message,
+      details: object.message instanceof Array ? object.message : undefined,
+      path: request.url,
+      timestamp: new Date().toISOString(),
+    });
   }
 }

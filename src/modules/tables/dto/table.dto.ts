@@ -5,11 +5,14 @@ import {
   IsArray,
   IsBoolean,
   IsEnum,
+  IsDefined,
   IsInt,
   IsOptional,
+  IsString,
   Max,
   Min,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 
 export class CreateWeddingTableDto {
@@ -28,6 +31,36 @@ export class BulkWeddingTablesDto {
   @ValidateNested({ each: true })
   @Type(() => CreateWeddingTableDto)
   tables!: CreateWeddingTableDto[];
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) defaultCapacity?: number;
+  @IsOptional() @IsBoolean() replace?: boolean;
+}
+export class TableSideConfigurationDto {
+  @Type(() => Number) @IsInt() @Min(0) @Max(1000) count!: number;
+  @IsArray() @ArrayMaxSize(1000) @IsInt({ each: true }) @Min(1, { each: true }) numbers!: number[];
+}
+export class ConfigureWeddingTablesDto {
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  groomTableNumbers?: number[];
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  brideTableNumbers?: number[];
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TableSideConfigurationDto)
+  groomTables?: TableSideConfigurationDto;
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => TableSideConfigurationDto)
+  brideTables?: TableSideConfigurationDto;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) defaultCapacity?: number;
+  @IsOptional() @IsBoolean() replace = true;
 }
 export class TableGenerationRuleDto {
   @Type(() => Number) @IsInt() @Min(1) from!: number;
@@ -46,6 +79,9 @@ export class GenerateWeddingTablesDto {
   @IsOptional() @IsBoolean() replace?: boolean;
 }
 export class AssignGuestTableDto {
-  @IsOptional() tableId?: string;
+  @IsDefined()
+  @ValidateIf((_object, value) => value !== null)
+  @IsString()
+  tableId!: string | null;
   @IsOptional() @IsBoolean() allowSideOverride?: boolean;
 }

@@ -660,12 +660,38 @@ paths:
                               type: array,
                               items: { $ref: '#/components/schemas/WeddingTableInput' },
                             },
+                          defaultCapacity: { type: integer, minimum: 1, example: 10 },
+                          replace: { type: boolean, default: false },
                         },
                     },
                 },
             },
         }
       responses: { '201': { description: Configured } }
+  /couples/{coupleId}/tables/configuration:
+    parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+    put:
+      summary: Save and reload a complete user-defined seating plan
+      description: Removed occupied tables cause a TABLE_IN_USE conflict. Numbers must be unique across both sides. The nested groomTables/brideTables count+numbers form is also accepted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [groomTableNumbers, brideTableNumbers]
+              properties:
+                groomTableNumbers:
+                  { type: array, items: { type: integer, minimum: 1 }, example: [1, 3, 5] }
+                brideTableNumbers:
+                  { type: array, items: { type: integer, minimum: 1 }, example: [2, 4] }
+                defaultCapacity: { type: integer, minimum: 1, example: 10 }
+                replace: { type: boolean, default: true }
+      responses:
+        {
+          '200': { description: Complete saved plan with occupancy },
+          '409': { $ref: '#/components/responses/Error' },
+        }
   /couples/{coupleId}/tables/generate:
     parameters: [{ $ref: '#/components/parameters/CoupleId' }]
     post:
@@ -698,29 +724,6 @@ paths:
     delete:
       responses:
         { '204': { description: Deleted }, '409': { $ref: '#/components/responses/Error' } }
-  /couples/{coupleId}/tables/{tableId}/guests/{guestId}:
-    parameters:
-      - { $ref: '#/components/parameters/CoupleId' }
-      - { in: path, name: tableId, required: true, schema: { type: string } }
-      - { in: path, name: guestId, required: true, schema: { type: string } }
-    patch:
-      summary: Assign a guest to the table, enforcing side and coupon capacity
-      requestBody:
-        {
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    {
-                      type: object,
-                      properties: { allowSideOverride: { type: boolean, default: false } },
-                    },
-                },
-            },
-        }
-      responses:
-        { '200': { description: Assigned }, '409': { $ref: '#/components/responses/Error' } }
   /couples/{coupleId}/guests/{guestId}/table:
     parameters:
       - { $ref: '#/components/parameters/CoupleId' }

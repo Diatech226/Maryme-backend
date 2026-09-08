@@ -11,6 +11,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import {
   AssignGuestTableDto,
   BulkWeddingTablesDto,
+  ConfigureWeddingTablesDto,
   CreateWeddingTableDto,
   GenerateWeddingTablesDto,
   UpdateWeddingTableDto,
@@ -71,8 +72,13 @@ export class TablesService {
     await this.couple(coupleId, user);
     if (new Set(dto.tables.map((table) => table.number)).size !== dto.tables.length)
       throw new ConflictException('Duplicate table number in request');
+    const tables = dto.tables.map((table) => ({
+      ...table,
+      capacity: table.capacity ?? dto.defaultCapacity,
+    }));
+    if (dto.replace) return this.replace(coupleId, tables);
     return this.prisma.$transaction(
-      dto.tables.map((table) =>
+      tables.map((table) =>
         this.prisma.weddingTable.upsert({
           where: { coupleId_number: { coupleId, number: table.number } },
           create: { ...table, coupleId },
@@ -80,6 +86,92 @@ export class TablesService {
         }),
       ),
     );
+  }
+  async configure(coupleId: string, dto: ConfigureWeddingTablesDto, user: AuthUser) {
+    await this.couple(coupleId, user);
+    const groom = dto.groomTableNumbers ?? dto.groomTables?.numbers;
+    const bride = dto.brideTableNumbers ?? dto.brideTables?.numbers;
+    if (!groom || !bride)
+      throw new BadRequestException({
+        code: 'INVALID_TABLE_CONFIGURATION',
+        message: 'Both groom and bride table numbers are required',
+      });
+    if (dto.groomTables && dto.groomTables.count !== groom.length)
+      throw new BadRequestException({
+        code: 'INVALID_TABLE_CONFIGURATION',
+        message: 'groomTables.count must match numbers length',
+      });
+    if (dto.brideTables && dto.brideTables.count !== bride.length)
+      throw new BadRequestException({
+        code: 'INVALID_TABLE_CONFIGURATION',
+        message: 'brideTables.count must match numbers length',
+      });
+    const all = [...groom, ...bride];
+    if (new Set(all).size !== all.length)
+      throw new ConflictException({
+        code: 'DUPLICATE_TABLE_NUMBER',
+        message: 'A table number can only belong to one side',
+      });
+    const tables: CreateWeddingTableDto[] = [
+      ...groom.map((number) => ({ number, side: GuestSide.GROOM, capacity: dto.defaultCapacity })),
+      ...bride.map((number) => ({ number, side: GuestSide.BRIDE, capacity: dto.defaultCapacity })),
+    ];
+    if (dto.replace === false) {
+      await this.bulk(coupleId, { tables }, user);
+    } else {
+      await this.replace(coupleId, tables);
+    }
+    return this.list(coupleId, user);
+  }
+  private async replace(coupleId: string, tables: CreateWeddingTableDto[]) {
+    return this.prisma.$transaction(async (tx) => {
+      const retained = tables.map((table) => table.number);
+      const existing = await tx.weddingTable.findMany({
+        where: { coupleId },
+        include: {
+          guests: {
+            where: { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+            select: { coupons: true },
+          },
+        },
+      });
+      const removed = existing.filter((table) => !retained.includes(table.number));
+      const used = removed.find((table) => table.guests.length > 0);
+      if (used)
+        throw new ConflictException({
+          code: 'TABLE_IN_USE',
+          message: `Table ${used.number} has assigned guests`,
+          tableNumber: used.number,
+          guestCount: used.guests.length,
+        });
+      for (const next of tables) {
+        const current = existing.find((table) => table.number === next.number);
+        if (!current?.guests.length) continue;
+        if (current.side !== next.side)
+          throw new ConflictException({
+            code: 'TABLE_SIDE_IN_USE',
+            message: `Table ${next.number} cannot change side while guests are assigned`,
+            tableNumber: next.number,
+            guestCount: current.guests.length,
+          });
+        const occupied = this.occupied(current);
+        if (next.capacity != null && occupied > next.capacity)
+          throw new ConflictException({
+            code: 'TABLE_CAPACITY_EXCEEDED',
+            message: `Table ${next.number} capacity is below its occupied seats`,
+            tableNumber: next.number,
+            occupiedSeats: occupied,
+          });
+      }
+      await tx.weddingTable.deleteMany({ where: { coupleId, number: { notIn: retained } } });
+      for (const table of tables)
+        await tx.weddingTable.upsert({
+          where: { coupleId_number: { coupleId, number: table.number } },
+          create: { ...table, coupleId },
+          update: { side: table.side, capacity: table.capacity },
+        });
+      return tx.weddingTable.findMany({ where: { coupleId }, orderBy: { number: 'asc' } });
+    });
   }
   async generate(coupleId: string, dto: GenerateWeddingTablesDto, user: AuthUser) {
     const generated = new Map<number, CreateWeddingTableDto>();
@@ -144,7 +236,7 @@ export class TablesService {
       where: { id: guestId, coupleId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
     });
     if (!guest) throw new NotFoundException('Guest not found');
-    if (!dto.tableId)
+    if (dto.tableId === null)
       return this.prisma.guest.update({
         where: { id: guestId },
         data: { tableId: null, tableNumber: null },
