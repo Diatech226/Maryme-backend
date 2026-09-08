@@ -12,6 +12,7 @@ import {
   GuestQueryDto,
   GuestImportDto,
   ImportGuestRowDto,
+  MarkInvitationsSentDto,
   UpdateGuestDto,
 } from './dto/guest.dto';
 import { assertQuota } from './quota';
@@ -42,14 +43,32 @@ export class GuestsService {
   }
   async list(id: string, q: GuestQueryDto, user: AuthUser) {
     await this.couple(id, user);
+    const and: Prisma.GuestWhereInput[] = [
+      { OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+    ];
+    if (q.hasPhone !== undefined)
+      and.push(
+        q.hasPhone
+          ? { AND: [{ phone: { not: null } }, { phone: { not: '' } }] }
+          : { OR: [{ phone: null }, { phone: '' }, { phone: { isSet: false } }] },
+      );
+    if (q.invitationSent !== undefined)
+      and.push(
+        q.invitationSent
+          ? { invitationSentDate: { not: null } }
+          : {
+              OR: [{ invitationSentDate: null }, { invitationSentDate: { isSet: false } }],
+            },
+      );
     const where: Prisma.GuestWhereInput = {
       coupleId: id,
-      AND: [{ OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] }],
+      AND: and,
       ...(q.search
         ? {
             OR: [
               { firstName: { contains: q.search, mode: 'insensitive' } },
               { lastName: { contains: q.search, mode: 'insensitive' } },
+              { phone: { contains: q.search, mode: 'insensitive' } },
             ],
           }
         : {}),
@@ -66,11 +85,21 @@ export class GuestsService {
         skip: (q.page - 1) * q.limit,
         take: q.limit,
         orderBy: { createdAt: 'desc' },
+        include: {
+          invitations: { select: { id: true }, take: 1 },
+          invitationArtifacts: { select: { id: true }, take: 1 },
+          checkIn: { select: { id: true } },
+        },
       }),
       this.prisma.guest.count({ where }),
     ]);
     return {
-      data,
+      data: data.map(({ invitations, invitationArtifacts, checkIn, ...guest }) => ({
+        ...guest,
+        hasInvitation: invitations.length > 0,
+        hasArtifact: invitationArtifacts.length > 0,
+        checkedIn: Boolean(checkIn),
+      })),
       meta: { page: q.page, limit: q.limit, total, totalPages: Math.ceil(total / q.limit) },
     };
   }
@@ -366,6 +395,92 @@ export class GuestsService {
     if (!g) throw new NotFoundException('Guest not found');
     assertCoupleAccess(user, g.coupleId);
     return g;
+  }
+  async invitationStatus(id: string, user: AuthUser) {
+    const guest = await this.prisma.guest.findFirst({
+      where: { id, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+      include: {
+        couple: { select: { updatedAt: true } },
+        checkIn: { select: { id: true } },
+        invitations: {
+          orderBy: { generatedAt: 'desc' },
+          take: 1,
+          select: {
+            id: true,
+            artifacts: {
+              orderBy: { generatedAt: 'desc' },
+              take: 1,
+              include: { design: { select: { updatedAt: true } } },
+            },
+          },
+        },
+      },
+    });
+    if (!guest) throw new NotFoundException('Guest not found');
+    assertCoupleAccess(user, guest.coupleId);
+    const invitation = guest.invitations[0];
+    const artifact = invitation?.artifacts[0];
+    const stale = Boolean(
+      artifact &&
+      (guest.updatedAt > artifact.guestUpdatedAt ||
+        artifact.design.updatedAt > artifact.designUpdatedAt ||
+        !artifact.coupleUpdatedAt ||
+        guest.couple.updatedAt > artifact.coupleUpdatedAt),
+    );
+    return {
+      guestId: guest.id,
+      generated: Boolean(invitation),
+      artifactReady: Boolean(artifact),
+      cardStatus: !invitation ? 'NOT_GENERATED' : stale ? 'STALE' : 'GENERATED',
+      sent: Boolean(guest.invitationSentDate),
+      sentAt: guest.invitationSentDate,
+      checkedIn: Boolean(guest.checkIn),
+    };
+  }
+  async markInvitationSent(id: string, user: AuthUser) {
+    const guest = await this.get(id, user);
+    const invitationSentDate = guest.invitationSentDate ?? new Date();
+    if (!guest.invitationSentDate) {
+      await this.prisma.guest.update({ where: { id }, data: { invitationSentDate } });
+      this.audit.record({
+        userId: user.sub,
+        action: 'INVITATION_SENT',
+        entityType: 'Guest',
+        entityId: id,
+        metadata: { coupleId: guest.coupleId },
+      });
+    }
+    return { guestId: id, invitationSentDate };
+  }
+  async markInvitationsSent(coupleId: string, dto: MarkInvitationsSentDto, user: AuthUser) {
+    await this.couple(coupleId, user);
+    const guests = await this.prisma.guest.findMany({
+      where: {
+        id: { in: dto.guestIds },
+        coupleId,
+        OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+      },
+      select: { id: true },
+    });
+    const accepted = new Set(guests.map((guest) => guest.id));
+    const failed = dto.guestIds.filter((id) => !accepted.has(id));
+    if (accepted.size) {
+      await this.prisma.guest.updateMany({
+        where: {
+          id: { in: [...accepted] },
+          OR: [{ invitationSentDate: null }, { invitationSentDate: { isSet: false } }],
+        },
+        data: { invitationSentDate: new Date() },
+      });
+      this.audit.record({
+        userId: user.sub,
+        action: 'INVITATION_SENT',
+        entityType: 'Couple',
+        entityId: coupleId,
+        metadata: { coupleId, count: accepted.size },
+      });
+    }
+    return { updated: accepted.size, failed };
   }
   async update(id: string, dto: UpdateGuestDto, user: AuthUser) {
     const g = await this.get(id, user);

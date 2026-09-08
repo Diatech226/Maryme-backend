@@ -98,7 +98,7 @@ export class GuestImportDto {
 }
 export class GuestQueryDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 50;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(500) limit = 50;
   @IsOptional() @IsString() search?: string;
   @IsOptional() @IsEnum(GuestSide) side?: GuestSide;
   @IsOptional() @IsString() family?: string;
@@ -115,4 +115,32 @@ export class GuestQueryDto {
   )
   @IsBoolean()
   checkedIn?: boolean;
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === 'true' || value === true
+      ? true
+      : value === 'false' || value === false
+        ? false
+        : value,
+  )
+  @IsBoolean()
+  hasPhone?: boolean;
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === 'true' || value === true
+      ? true
+      : value === 'false' || value === false
+        ? false
+        : value,
+  )
+  @IsBoolean()
+  invitationSent?: boolean;
+}
+
+export class MarkInvitationsSentDto {
+  @IsArray()
+  @ArrayUnique()
+  @ArrayMaxSize(500)
+  @IsString({ each: true })
+  guestIds!: string[];
 }

@@ -88,8 +88,31 @@ paths:
         parameters:
           [
             { $ref: '#/components/parameters/Page' },
-            { $ref: '#/components/parameters/Limit' },
+            {
+              in: query,
+              name: limit,
+              schema: { type: integer, minimum: 1, maximum: 500, default: 50 },
+            },
             { in: query, name: search, schema: { type: string } },
+            { in: query, name: side, schema: { type: string, enum: [GROOM, BRIDE] } },
+            { in: query, name: family, schema: { type: string } },
+            {
+              in: query,
+              name: category,
+              schema:
+                {
+                  type: string,
+                  enum: [BRIDE_FAMILY, GROOM_FAMILY, WITNESS, FRIENDS, COLLEAGUES, VIP],
+                },
+            },
+            {
+              in: query,
+              name: rsvpStatus,
+              schema: { type: string, enum: [CONFIRMED, PENDING, DECLINED] },
+            },
+            { in: query, name: hasPhone, schema: { type: boolean } },
+            { in: query, name: invitationSent, schema: { type: boolean } },
+            { in: query, name: checkedIn, schema: { type: boolean } },
           ],
         responses:
           { '200': { description: Guests page }, '403': { $ref: '#/components/responses/Error' } },
@@ -271,6 +294,53 @@ paths:
           },
         responses: { '201': { description: Generated with one-time raw token } },
       }
+  /guests/{guestId}/invitation-sent:
+    post:
+      summary: Idempotently mark an invitation as sent without generating or changing its QR
+      parameters: [{ in: path, name: guestId, required: true, schema: { type: string } }]
+      responses:
+        '201':
+          description: Existing or newly-created sent timestamp
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/InvitationSent' } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /guests/{guestId}/invitation-status:
+    get:
+      summary: Return independent card, delivery, artifact, and check-in status
+      parameters: [{ in: path, name: guestId, required: true, schema: { type: string } }]
+      responses:
+        '200':
+          description: Invitation lifecycle status
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/InvitationStatus' } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /couples/{coupleId}/invitations/mark-sent:
+    post:
+      summary: Idempotently mark owned, non-deleted guests' invitations as sent
+      parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [guestIds]
+              properties:
+                guestIds: { type: array, maxItems: 500, uniqueItems: true, items: { type: string } }
+      responses:
+        '201':
+          description: Count accepted and IDs rejected because they are absent, deleted, or foreign
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated, failed]
+                properties:
+                  updated: { type: integer }
+                  failed: { type: array, items: { type: string } }
+        '403': { $ref: '#/components/responses/Error' }
   /invitations/{id}/revoke:
     post:
       {
@@ -762,6 +832,23 @@ components:
             token: { type: string, description: Present only in generation response },
           },
       }
+    InvitationSent:
+      type: object
+      required: [guestId, invitationSentDate]
+      properties:
+        guestId: { type: string }
+        invitationSentDate: { type: string, format: date-time }
+    InvitationStatus:
+      type: object
+      required: [guestId, generated, artifactReady, cardStatus, sent, checkedIn]
+      properties:
+        guestId: { type: string }
+        generated: { type: boolean }
+        artifactReady: { type: boolean }
+        cardStatus: { type: string, enum: [NOT_GENERATED, GENERATED, STALE] }
+        sent: { type: boolean }
+        sentAt: { type: string, format: date-time, nullable: true }
+        checkedIn: { type: boolean }
     CheckIn:
       type: object
       properties:
