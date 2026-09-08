@@ -22,6 +22,7 @@ import {
   CreateGuestDto,
   GuestQueryDto,
   GuestImportDto,
+  MarkInvitationsSentDto,
   UpdateGuestDto,
 } from './dto/guest.dto';
 import { GuestsService } from './guests.service';
@@ -62,6 +63,25 @@ export class GuestsController {
   }
   @Get('guests/:id') get(@Param('id') id: string, @CurrentUser() u: AuthUser) {
     return this.s.get(id, u);
+  }
+  @Get('guests/:id/invitation-status') invitationStatus(
+    @Param('id') id: string,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.invitationStatus(id, u);
+  }
+  @Post('guests/:id/invitation-sent') markInvitationSent(
+    @Param('id') id: string,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.markInvitationSent(id, u);
+  }
+  @Post('couples/:coupleId/invitations/mark-sent') markInvitationsSent(
+    @Param('coupleId') id: string,
+    @Body() dto: MarkInvitationsSentDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.markInvitationsSent(id, dto, u);
   }
   @Patch('guests/:id') update(
     @Param('id') id: string,
