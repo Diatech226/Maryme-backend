@@ -269,6 +269,21 @@ describe('Maryme lifecycle (e2e)', () => {
       .expect(400);
 
     const overlay = { qr: { enabled: true, x: 0.1, y: 0.1 } };
+    await request(app.getHttpServer())
+      .post(`/api/v1/couples/${couple.id}/invitation-designs`)
+      .set(auth(token))
+      .send({ mode: 'GENERATED', templateKey: 'classic', overlayConfig: overlay })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(`/api/v1/couples/${couple.id}/invitation-designs`)
+      .set(auth(token))
+      .send({
+        name: 'Invalid',
+        mode: 'GENERATED',
+        templateKey: 'classic',
+        overlayConfig: { qr: { enabled: true, x: 4, y: 0.1, unknown: true } },
+      })
+      .expect(400);
     const generated = (
       await request(app.getHttpServer())
         .post(`/api/v1/couples/${couple.id}/invitation-designs`)
@@ -360,6 +375,24 @@ describe('Maryme lifecycle (e2e)', () => {
       .set(auth(token))
       .expect(200)
       .expect(({ body }) => expect(body.data.data[0].id).toBe(artifact.id));
+    for (let index = 0; index < 2; index++) {
+      await request(app.getHttpServer())
+        .post(`/api/v1/invitations/${invitation.id}/artifact`)
+        .set(auth(token))
+        .field('designId', uploaded.id)
+        .attach('image', png, { filename: `invitation-${index}.png`, contentType: 'image/png' })
+        .expect(201);
+    }
+    await request(app.getHttpServer())
+      .get(
+        `/api/v1/couples/${couple.id}/invitation-artifacts?page=2&limit=2&guestId=${guest.id}&stale=false`,
+      )
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => {
+        expect(body.data.data).toHaveLength(1);
+        expect(body.data.meta).toEqual({ page: 2, limit: 2, total: 3, totalPages: 2 });
+      });
     await request(app.getHttpServer())
       .get(`/api/v1/invitation-artifacts/${artifact.id}/download?format=image`)
       .set(auth(token))
@@ -427,12 +460,22 @@ describe('Maryme lifecycle (e2e)', () => {
     ).body.data;
     expect(share.id).toBeDefined();
     const shareToken = share.shareUrl.split('/').pop();
+    const secondShare = (
+      await request(app.getHttpServer())
+        .post(`/api/v1/invitation-artifacts/${artifact.id}/share-link`)
+        .set(auth(token))
+        .send({})
+        .expect(201)
+    ).body.data;
+    expect(secondShare.id).not.toBe(share.id);
     await request(app.getHttpServer())
       .get(`/api/v1/invitation-artifacts/${artifact.id}/share-links`)
       .set(auth(token))
       .expect(200)
       .expect(({ body }) => {
-        expect(body.data[0].id).toBe(share.id);
+        expect(body.data.map((link: { id: string }) => link.id)).toEqual(
+          expect.arrayContaining([share.id, secondShare.id]),
+        );
         expect(body.data[0].tokenHash).toBeUndefined();
         expect(body.data[0].shareUrl).toBeUndefined();
       });
@@ -442,11 +485,67 @@ describe('Maryme lifecycle (e2e)', () => {
       .expect('Content-Type', /image\/png/)
       .expect(200);
     await request(app.getHttpServer())
+      .get('/api/v1/public/invitations/share/unknown-token')
+      .expect(404);
+    const qrBefore = await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.id } });
+    await request(app.getHttpServer())
       .post(`/api/v1/invitation-share-links/${share.id}/revoke`)
       .set(auth(token))
-      .expect(201);
+      .expect(201)
+      .expect(({ body }) =>
+        expect(body.data).toEqual({ id: share.id, revokedAt: expect.any(String) }),
+      );
+    const qrAfter = await prisma.invitation.findUniqueOrThrow({ where: { id: invitation.id } });
+    expect(qrAfter.tokenHash).toBe(qrBefore.tokenHash);
+    expect(qrAfter.status).toBe('ACTIVE');
     await request(app.getHttpServer())
       .get(`/api/v1/public/invitations/share/${shareToken}`)
       .expect(410);
+    await request(app.getHttpServer())
+      .get(`/api/v1/public/invitations/share/${secondShare.shareUrl.split('/').pop()}`)
+      .expect(200);
+
+    const foreignEmail = 'foreign-cards@maryme.test';
+    const foreign = (
+      await request(app.getHttpServer())
+        .post('/api/v1/couples')
+        .set(auth(admin))
+        .send(coupleDto(foreignEmail, '+22670000006', 'CouplePassword123!'))
+        .expect(201)
+    ).body.data;
+    await request(app.getHttpServer())
+      .post(`/api/v1/couples/${foreign.id}/authorize`)
+      .set(auth(admin))
+      .expect(201);
+    const foreignToken = (
+      await request(app.getHttpServer())
+        .post('/api/v1/auth/login')
+        .send({ email: foreignEmail, password: 'CouplePassword123!' })
+        .expect(200)
+    ).body.accessToken;
+    const forbidden = [
+      request(app.getHttpServer())
+        .get(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}`)
+        .set(auth(foreignToken)),
+      request(app.getHttpServer())
+        .get(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/background`)
+        .set(auth(foreignToken)),
+      request(app.getHttpServer())
+        .get(`/api/v1/couples/${couple.id}/invitation-artifacts`)
+        .set(auth(foreignToken)),
+      request(app.getHttpServer())
+        .get(`/api/v1/invitation-artifacts/${artifact.id}/download?format=image`)
+        .set(auth(foreignToken)),
+      request(app.getHttpServer())
+        .post(`/api/v1/invitation-artifacts/${artifact.id}/share-link`)
+        .set(auth(foreignToken)),
+      request(app.getHttpServer())
+        .get(`/api/v1/invitation-artifacts/${artifact.id}/share-links`)
+        .set(auth(foreignToken)),
+      request(app.getHttpServer())
+        .post(`/api/v1/invitation-share-links/${secondShare.id}/revoke`)
+        .set(auth(foreignToken)),
+    ];
+    for (const call of forbidden) await call.expect(403);
   });
 });

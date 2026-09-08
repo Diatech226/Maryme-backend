@@ -50,6 +50,17 @@ export const envValidationSchema = Joi.object({
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('30d'),
   COOKIE_SECURE: Joi.boolean().default(false),
   ARGON2_MEMORY_COST: Joi.number().integer().min(8192).default(19456),
+  STORAGE_ENDPOINT: Joi.string().uri().optional(),
+  STORAGE_REGION: Joi.string().trim().min(1).optional(),
+  STORAGE_BUCKET: Joi.string().trim().min(1).optional(),
+  STORAGE_ACCESS_KEY_ID: Joi.string().min(1).optional(),
+  STORAGE_SECRET_ACCESS_KEY: Joi.string().min(1).optional(),
+  STORAGE_MAX_UPLOAD_BYTES: Joi.number()
+    .integer()
+    .positive()
+    .default(10 * 1024 * 1024),
+  PUBLIC_API_URL: Joi.string().uri().optional(),
+  SHARE_LINK_MAX_DAYS: Joi.number().integer().positive().default(30),
   SUPER_ADMIN_EMAIL: Joi.string()
     .trim()
     .lowercase()

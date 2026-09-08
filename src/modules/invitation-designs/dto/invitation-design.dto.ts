@@ -4,6 +4,8 @@ import {
   IsBoolean,
   IsEnum,
   IsInt,
+  IsNotEmpty,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -13,10 +15,10 @@ import {
 } from 'class-validator';
 export class OverlayItemDto {
   @IsBoolean() enabled!: boolean;
-  @Min(0) @Max(1) x!: number;
-  @Min(0) @Max(1) y!: number;
-  @IsOptional() @Min(0) @Max(1) width?: number;
-  @IsOptional() @Min(0) @Max(1) height?: number;
+  @IsNumber() @Min(0) @Max(1) x!: number;
+  @IsNumber() @Min(0) @Max(1) y!: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(1) width?: number;
+  @IsOptional() @IsNumber() @Min(0) @Max(1) height?: number;
 }
 export class OverlayConfigDto {
   @ValidateNested() @Type(() => OverlayItemDto) qr!: OverlayItemDto;
@@ -37,9 +39,9 @@ export class ContentConfigDto {
   @IsOptional() @IsBoolean() qr?: boolean;
 }
 export class CreateInvitationDesignDto {
-  @IsString() name!: string;
+  @IsString() @IsNotEmpty() name!: string;
   @IsEnum(InvitationDesignMode) mode!: InvitationDesignMode;
-  @IsOptional() @IsString() templateKey?: string;
+  @IsOptional() @IsString() @IsNotEmpty() templateKey?: string;
   @IsOptional() @IsInt() @Min(1) canvasWidth?: number;
   @IsOptional() @IsInt() @Min(1) canvasHeight?: number;
   @ValidateNested() @Type(() => OverlayConfigDto) overlayConfig!: OverlayConfigDto;

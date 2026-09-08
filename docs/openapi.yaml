@@ -395,6 +395,163 @@ paths:
           '200': { description: Reconciliation report },
           '409': { $ref: '#/components/responses/Error' },
         }
+  /couples/{coupleId}/invitation-designs:
+    get:
+      summary: List invitation designs (owner or SUPER_ADMIN)
+      parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+      responses: { '200': { description: Safe designs; storage keys are omitted } }
+    post:
+      summary: Create an invitation design
+      parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/CreateInvitationDesign' } }
+      responses:
+        '201': { description: Created safe design }
+        '400': { $ref: '#/components/responses/Error' }
+  /couples/{coupleId}/invitation-designs/{designId}:
+    parameters:
+      - { $ref: '#/components/parameters/CoupleId' }
+      - { in: path, name: designId, required: true, schema: { type: string } }
+    get: { summary: Get a safe invitation design, responses: { '200': { description: Design } } }
+    patch:
+      summary: Update an invitation design
+      requestBody:
+        content:
+          { application/json: { schema: { $ref: '#/components/schemas/UpdateInvitationDesign' } } }
+      responses: { '200': { description: Updated design } }
+    delete: { summary: Delete an unused design, responses: { '204': { description: Deleted } } }
+  /couples/{coupleId}/invitation-designs/{designId}/activate:
+    post:
+      summary: Make this the couple's active design
+      parameters:
+        - { $ref: '#/components/parameters/CoupleId' }
+        - { in: path, name: designId, required: true, schema: { type: string } }
+      responses: { '201': { description: Activated design } }
+  /couples/{coupleId}/invitation-designs/{designId}/background:
+    parameters:
+      - { $ref: '#/components/parameters/CoupleId' }
+      - { in: path, name: designId, required: true, schema: { type: string } }
+    post:
+      summary: Upload a private PNG, JPEG, WebP, or PDF background
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties: { file: { type: string, format: binary } }
+      responses: { '201': { description: Safe design metadata; no object key } }
+    get:
+      summary: Download the private background
+      responses:
+        '200':
+          description: Original background with its stored Content-Type
+          content:
+            image/png: { schema: { type: string, format: binary } }
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+            application/pdf: { schema: { type: string, format: binary } }
+  /invitations/{invitationId}/artifact:
+    post:
+      summary: Store an artifact derived from the invitation's guest and couple
+      parameters: [{ in: path, name: invitationId, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [designId]
+              properties:
+                designId: { type: string }
+                image: { type: string, format: binary, description: PNG, JPEG, or WebP }
+                pdf: { type: string, format: binary }
+              description: At least image or pdf is required.
+      responses:
+        {
+          '201':
+            {
+              description: Safe artifact,
+              content:
+                {
+                  application/json: { schema: { $ref: '#/components/schemas/InvitationArtifact' } },
+                },
+            },
+        }
+  /couples/{coupleId}/invitation-artifacts:
+    get:
+      summary: List and filter a couple's artifacts
+      parameters:
+        - { $ref: '#/components/parameters/CoupleId' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { in: query, name: guestId, schema: { type: string } }
+        - { in: query, name: stale, schema: { type: boolean } }
+      responses:
+        '200':
+          description: Paginated artifacts
+          content: { application/json: { schema: { $ref: '#/components/schemas/ArtifactPage' } } }
+  /invitation-artifacts/{artifactId}/download:
+    get:
+      summary: Download an owned artifact format
+      parameters:
+        - { in: path, name: artifactId, required: true, schema: { type: string } }
+        - { in: query, name: format, required: true, schema: { type: string, enum: [image, pdf] } }
+      responses:
+        {
+          '200': { description: File with stored Content-Type and attachment disposition },
+          '404': { $ref: '#/components/responses/Error' },
+        }
+  /invitation-artifacts/{artifactId}/share-link:
+    post:
+      summary: Create an additional active opaque share link
+      parameters: [{ in: path, name: artifactId, required: true, schema: { type: string } }]
+      requestBody:
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { type: object, properties: { expiresAt: { type: string, format: date-time } } },
+              },
+          }
+      responses: { '201': { description: id, one-time shareUrl, and capped expiresAt } }
+  /invitation-artifacts/{artifactId}/share-links:
+    get:
+      summary: List active, unexpired share-link metadata only
+      parameters: [{ in: path, name: artifactId, required: true, schema: { type: string } }]
+      responses: { '200': { description: No token hash or reconstructable URL is returned } }
+  /public/invitations/share/{token}:
+    get:
+      security: []
+      summary: Open an opaque public share (image preferred over PDF)
+      parameters: [{ in: path, name: token, required: true, schema: { type: string } }]
+      responses:
+        '200':
+          {
+            description: File with Content-Type,
+            attachment disposition,
+            and private no-store cache policy,
+          }
+        '404': { description: Unknown token }
+        '410': { description: Expired or revoked token }
+  /invitation-share-links/{id}/revoke:
+    post:
+      summary: Revoke exactly one owned share link without affecting its QR invitation
+      parameters:
+        [
+          {
+            in: path,
+            name: id,
+            required: true,
+            description: Share-link ID,
+            schema: { type: string },
+          },
+        ]
+      responses: { '201': { description: id and revokedAt } }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -411,6 +568,71 @@ components:
         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
       }
   schemas:
+    OverlayItem:
+      type: object
+      additionalProperties: false
+      required: [enabled, x, y]
+      properties:
+        enabled: { type: boolean }
+        x: { type: number, minimum: 0, maximum: 1 }
+        y: { type: number, minimum: 0, maximum: 1 }
+        width: { type: number, minimum: 0, maximum: 1 }
+        height: { type: number, minimum: 0, maximum: 1 }
+    OverlayConfig:
+      type: object
+      additionalProperties: false
+      required: [qr]
+      properties:
+        qr: { $ref: '#/components/schemas/OverlayItem' }
+        guestName: { $ref: '#/components/schemas/OverlayItem' }
+        family: { $ref: '#/components/schemas/OverlayItem' }
+        category: { $ref: '#/components/schemas/OverlayItem' }
+        table: { $ref: '#/components/schemas/OverlayItem' }
+        coupons: { $ref: '#/components/schemas/OverlayItem' }
+        assignedSeats: { $ref: '#/components/schemas/OverlayItem' }
+    CreateInvitationDesign:
+      type: object
+      additionalProperties: false
+      required: [name, mode, overlayConfig]
+      properties:
+        name: { type: string, minLength: 1 }
+        mode: { type: string, enum: [GENERATED, UPLOADED] }
+        templateKey: { type: string, minLength: 1, description: Required when mode is GENERATED }
+        canvasWidth: { type: integer, minimum: 1 }
+        canvasHeight: { type: integer, minimum: 1 }
+        overlayConfig: { $ref: '#/components/schemas/OverlayConfig' }
+        contentConfig: { type: object, additionalProperties: false }
+    UpdateInvitationDesign:
+      type: object
+      additionalProperties: false
+      description: All properties are optional on PATCH.
+      properties:
+        name: { type: string }
+        mode: { type: string, enum: [GENERATED, UPLOADED] }
+        templateKey: { type: string }
+        canvasWidth: { type: integer, minimum: 1 }
+        canvasHeight: { type: integer, minimum: 1 }
+        overlayConfig: { $ref: '#/components/schemas/OverlayConfig' }
+        contentConfig: { type: object, additionalProperties: false }
+    InvitationArtifact:
+      type: object
+      additionalProperties: false
+      required: [id, guestId, invitationId, designId, generatedAt, hasImage, hasPdf, stale]
+      properties:
+        id: { type: string }
+        guestId: { type: string }
+        invitationId: { type: string }
+        designId: { type: string }
+        generatedAt: { type: string, format: date-time }
+        hasImage: { type: boolean }
+        hasPdf: { type: boolean }
+        stale: { type: boolean }
+    ArtifactPage:
+      type: object
+      required: [data, meta]
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/InvitationArtifact' } }
+        meta: { $ref: '#/components/schemas/PaginationMeta' }
     LoginRequest:
       {
         type: object,
@@ -613,37 +835,3 @@ components:
             details: { type: object },
           },
       }
-
-# Invitation design/artifact API (all non-public operations require SUPER_ADMIN or the owning COUPLE).
-x-maryme-invitation-api:
-  invitationDesigns:
-    paths:
-      - GET,POST /couples/{coupleId}/invitation-designs
-      - GET,PATCH,DELETE /couples/{coupleId}/invitation-designs/{designId}
-      - POST /couples/{coupleId}/invitation-designs/{designId}/activate
-      - POST multipart/form-data /couples/{coupleId}/invitation-designs/{designId}/background
-      - GET /couples/{coupleId}/invitation-designs/{designId}/background
-    modes: [GENERATED, UPLOADED]
-    fields:
-      [name, mode, templateKey, canvasWidth, canvasHeight, overlayConfig, contentConfig, isActive]
-    uploads: [image/png, image/jpeg, image/webp, application/pdf]
-    overlayCoordinates: normalized 0..1
-  artifacts:
-    paths:
-      - POST multipart/form-data /invitations/{invitationId}/artifact
-      - GET /guests/{guestId}/invitation-artifacts
-      - GET /couples/{coupleId}/invitation-artifacts?guestId={guestId}&stale={boolean}&page={page}&limit={limit}
-      - GET /invitation-artifacts/{artifactId}/download?format=image|pdf
-    stale: Guest.updatedAt, InvitationDesign.updatedAt, or Couple.updatedAt is newer than the generation snapshot
-    persisted: true
-  sharing:
-    paths:
-      - POST /invitation-artifacts/{artifactId}/share-link
-      - GET /invitation-artifacts/{artifactId}/share-links
-      - GET /public/invitations/share/{opaqueToken}
-      - POST /invitation-share-links/{id}/revoke
-    createResponse: [id, shareUrl, expiresAt]
-    listResponse: [id, expiresAt, createdAt, openedAt]
-    defaultFile: image when present, otherwise PDF
-    tokenStorage: SHA-256 hash only
-    expiration: accessClosesAt, otherwise weddingDate plus one day, capped by SHARE_LINK_MAX_DAYS
