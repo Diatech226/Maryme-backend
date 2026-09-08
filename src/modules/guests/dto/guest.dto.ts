@@ -26,7 +26,9 @@ export class CreateGuestDto {
   @IsOptional() @IsBoolean() plusOne?: boolean;
   @IsOptional() @IsString() plusOneName?: string;
   @IsOptional() @IsBoolean() isChild?: boolean;
-  @IsOptional() @IsString() tableNumber?: string;
+  @IsOptional() @IsString() tableId?: string;
+  /** @deprecated Use tableId. Retained for existing clients. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) tableNumber?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) assignedSeats?: string[];
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsEmail() email?: string;
@@ -45,7 +47,9 @@ export class UpdateGuestDto {
   @IsOptional() @IsBoolean() plusOne?: boolean;
   @IsOptional() @IsString() plusOneName?: string;
   @IsOptional() @IsBoolean() isChild?: boolean;
-  @IsOptional() @IsString() tableNumber?: string;
+  @IsOptional() @IsString() tableId?: string;
+  /** @deprecated Use tableId. */
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) tableNumber?: number;
   @IsOptional() @IsArray() @IsString({ each: true }) assignedSeats?: string[];
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() phone?: string;
@@ -80,7 +84,8 @@ export class ImportGuestRowDto {
   @IsOptional() @IsBoolean() plusOne?: boolean;
   @IsOptional() @IsString() plusOneName?: string;
   @IsOptional() @IsBoolean() isChild?: boolean;
-  @IsOptional() @IsString() tableNumber?: string;
+  @IsOptional() @IsString() tableId?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) tableNumber?: number;
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsBoolean() lodgingNeeded?: boolean;
