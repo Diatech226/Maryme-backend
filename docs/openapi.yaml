@@ -163,6 +163,24 @@ paths:
             '409': { description: Quota exceeded or replace forbidden after check-in },
           },
       }
+  /guests/{guestId}:
+    parameters:
+      - { in: path, name: guestId, required: true, schema: { type: string } }
+    get:
+      responses: { '200': { description: Guest } }
+    patch:
+      summary: Update a guest and its table assignment atomically
+      description: Omit tableId to preserve the assignment, use null to unassign, or provide a table ID. A side change without a compatible replacement table automatically unassigns the guest.
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/Guest' } }
+      responses:
+        '200': { description: Updated guest }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    delete:
+      responses: { '204': { description: Deleted } }
   /couples/{coupleId}/checkins:
     get:
       {
@@ -470,7 +488,12 @@ paths:
     get:
       summary: List invitation designs (owner or SUPER_ADMIN)
       parameters: [{ $ref: '#/components/parameters/CoupleId' }]
-      responses: { '200': { description: Safe designs; storage keys are omitted } }
+      responses:
+        '200':
+          description: Safe designs; storage keys are omitted
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/InvitationDesign' } }
     post:
       summary: Create an invitation design
       parameters: [{ $ref: '#/components/parameters/CoupleId' }]
@@ -479,19 +502,32 @@ paths:
         content:
           application/json: { schema: { $ref: '#/components/schemas/CreateInvitationDesign' } }
       responses:
-        '201': { description: Created safe design }
+        '201':
+          description: Created safe design
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/InvitationDesign' } }
         '400': { $ref: '#/components/responses/Error' }
   /couples/{coupleId}/invitation-designs/{designId}:
     parameters:
       - { $ref: '#/components/parameters/CoupleId' }
       - { in: path, name: designId, required: true, schema: { type: string } }
-    get: { summary: Get a safe invitation design, responses: { '200': { description: Design } } }
+    get:
+      summary: Get a safe invitation design
+      responses:
+        '200':
+          description: Design
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/InvitationDesign' } }
     patch:
       summary: Update an invitation design without changing its immutable mode
       requestBody:
         content:
           { application/json: { schema: { $ref: '#/components/schemas/UpdateInvitationDesign' } } }
-      responses: { '200': { description: Updated design } }
+      responses:
+        '200':
+          description: Updated design
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/InvitationDesign' } }
     delete: { summary: Delete an unused design, responses: { '204': { description: Deleted } } }
   /couples/{coupleId}/invitation-designs/{designId}/activate:
     post:
@@ -499,7 +535,20 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/CoupleId' }
         - { in: path, name: designId, required: true, schema: { type: string } }
-      responses: { '201': { description: Activated design } }
+      description: An UPLOADED design without a background is rejected with INVITATION_BACKGROUND_MISSING and no active design is changed.
+      responses:
+        '201':
+          description: Activated design
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/InvitationDesign' } }
+        '400':
+          description: UPLOADED design is incomplete (INVITATION_BACKGROUND_MISSING)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                code: INVITATION_BACKGROUND_MISSING
+                message: Upload a background before activating this design
   /couples/{coupleId}/invitation-designs/{designId}/background:
     parameters:
       - { $ref: '#/components/parameters/CoupleId' }
@@ -515,7 +564,11 @@ paths:
               type: object
               required: [file]
               properties: { file: { type: string, format: binary } }
-      responses: { '201': { description: Safe design metadata; no object key } }
+      responses:
+        '201':
+          description: Safe design metadata; no object key
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/InvitationDesign' } }
     get:
       summary: Download the private background
       responses:
@@ -688,10 +741,17 @@ paths:
                 defaultCapacity: { type: integer, minimum: 1, example: 10 }
                 replace: { type: boolean, default: true }
       responses:
-        {
-          '200': { description: Complete saved plan with occupancy },
-          '409': { $ref: '#/components/responses/Error' },
-        }
+        '200': { description: Complete saved plan with occupancy }
+        '409':
+          description: A removed table is occupied (TABLE_IN_USE)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                code: TABLE_IN_USE
+                message: Table 18 has assigned guests
+                tableNumber: 18
+                guestCount: 7
   /couples/{coupleId}/tables/generate:
     parameters: [{ $ref: '#/components/parameters/CoupleId' }]
     post:
@@ -718,7 +778,7 @@ paths:
         {
           required: true,
           content:
-            { application/json: { schema: { $ref: '#/components/schemas/WeddingTableInput' } } },
+            { application/json: { schema: { $ref: '#/components/schemas/UpdateWeddingTable' } } },
         }
       responses: { '200': { description: Updated } }
     delete:
@@ -765,6 +825,13 @@ components:
     WeddingTableInput:
       type: object
       required: [number, side]
+      properties:
+        number: { type: integer, minimum: 1 }
+        side: { type: string, enum: [GROOM, BRIDE] }
+        capacity: { type: integer, minimum: 1, nullable: true }
+    UpdateWeddingTable:
+      type: object
+      description: For capacity, omission preserves the current value while null removes the limit.
       properties:
         number: { type: integer, minimum: 1 }
         side: { type: string, enum: [GROOM, BRIDE] }
@@ -838,6 +905,31 @@ components:
         canvasHeight: { type: integer, minimum: 1 }
         overlayConfig: { $ref: '#/components/schemas/OverlayConfig' }
         contentConfig: { type: object, additionalProperties: false }
+    InvitationDesign:
+      type: object
+      description: >-
+        UPLOADED + hasBackground=false is an import draft and cannot be activated.
+        UPLOADED + hasBackground=true + isActive=false is ready but inactive.
+        UPLOADED + hasBackground=true + isActive=true is the active imported card.
+        backgroundObjectKey is never exposed.
+      required:
+        [id, coupleId, name, mode, overlayConfig, isActive, hasBackground, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        coupleId: { type: string }
+        name: { type: string }
+        mode: { type: string, enum: [GENERATED, UPLOADED] }
+        templateKey: { type: string, nullable: true }
+        backgroundMimeType:
+          { type: string, nullable: true, enum: [image/png, image/jpeg, image/webp] }
+        canvasWidth: { type: integer, nullable: true }
+        canvasHeight: { type: integer, nullable: true }
+        overlayConfig: { $ref: '#/components/schemas/OverlayConfig' }
+        contentConfig: { type: object, nullable: true, additionalProperties: false }
+        isActive: { type: boolean }
+        hasBackground: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     InvitationArtifact:
       type: object
       additionalProperties: false
@@ -972,6 +1064,15 @@ components:
               {
                 type: string,
                 enum: [STANDARD, VEGETARIAN, VEGAN, GLUTEN_FREE, CHILD_MENU, HALAL, NO_SEAFOOD],
+              },
+            tableId:
+              {
+                type: string,
+                nullable: true,
+                description: On PATCH,
+                omit to preserve assignment,
+                null to unassign,
+                or provide an ID to validate and assign atomically.,
               },
           },
       }

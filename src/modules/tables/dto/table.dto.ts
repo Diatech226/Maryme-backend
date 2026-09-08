@@ -23,7 +23,13 @@ export class CreateWeddingTableDto {
 export class UpdateWeddingTableDto {
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) number?: number;
   @IsOptional() @IsEnum(GuestSide) side?: GuestSide;
-  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(1000) capacity?: number;
+  @IsOptional()
+  @ValidateIf((_object, value) => value !== null)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000)
+  capacity?: number | null;
 }
 export class BulkWeddingTablesDto {
   @IsArray()
