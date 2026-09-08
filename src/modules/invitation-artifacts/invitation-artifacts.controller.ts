@@ -116,6 +116,7 @@ export class PublicInvitationSharesController {
       .type(f.contentType)
       .attachment(`invitation.${extension}`)
       .set('Cache-Control', 'private, no-store')
+      .set('X-Content-Type-Options', 'nosniff')
       .send(f.body);
   }
 }

@@ -309,7 +309,7 @@ describe('Maryme lifecycle (e2e)', () => {
       await request(app.getHttpServer())
         .post(`/api/v1/couples/${couple.id}/invitation-designs`)
         .set(auth(token))
-        .send({ name: 'Upload', mode: 'UPLOADED', overlayConfig: overlay })
+        .send({ name: 'Upload', mode: 'UPLOADED', overlayConfig: {}, contentConfig: {} })
         .expect(201)
     ).body.data;
     const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 0]);
@@ -328,12 +328,21 @@ describe('Maryme lifecycle (e2e)', () => {
       .post(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/background`)
       .set(auth(token))
       .attach('file', pdf, { filename: 'card.pdf', contentType: 'application/pdf' })
-      .expect(201);
+      .expect(400);
     await request(app.getHttpServer())
       .get(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}/background`)
       .set(auth(token))
-      .expect('Content-Type', /application\/pdf/)
+      .expect('Content-Type', /image\/png/)
+      .expect('Cache-Control', 'private, no-store')
+      .expect('X-Content-Type-Options', 'nosniff')
       .expect(200);
+
+    await request(app.getHttpServer())
+      .patch(`/api/v1/couples/${couple.id}/invitation-designs/${uploaded.id}`)
+      .set(auth(token))
+      .send({ mode: 'GENERATED', templateKey: 'classic' })
+      .expect(409)
+      .expect(({ body }) => expect(body.code).toBe('DESIGN_MODE_IMMUTABLE'));
 
     const guest = (
       await request(app.getHttpServer())
@@ -482,6 +491,7 @@ describe('Maryme lifecycle (e2e)', () => {
     await request(app.getHttpServer())
       .get(`/api/v1/public/invitations/share/${shareToken}`)
       .expect('Cache-Control', 'private, no-store')
+      .expect('X-Content-Type-Options', 'nosniff')
       .expect('Content-Type', /image\/png/)
       .expect(200);
     await request(app.getHttpServer())

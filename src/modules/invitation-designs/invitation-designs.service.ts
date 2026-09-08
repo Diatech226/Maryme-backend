@@ -75,6 +75,11 @@ export class InvitationDesignsService {
   }
   async update(coupleId: string, id: string, dto: UpdateInvitationDesignDto, user: AuthUser) {
     const current = await this.design(coupleId, id, user);
+    if (dto.mode !== undefined && dto.mode !== current.mode)
+      throw new ConflictException({
+        code: 'DESIGN_MODE_IMMUTABLE',
+        message: 'Create a separate design to try another mode; existing uploads are preserved',
+      });
     const mode = dto.mode ?? current.mode;
     const templateKey = dto.templateKey ?? current.templateKey;
     if (mode === InvitationDesignMode.GENERATED && !templateKey)
@@ -85,18 +90,10 @@ export class InvitationDesignsService {
       where: { id },
       data: {
         ...dto,
-        ...(dto.mode === InvitationDesignMode.UPLOADED ? { templateKey: null } : {}),
-        ...(dto.mode === InvitationDesignMode.GENERATED
-          ? { backgroundObjectKey: null, backgroundMimeType: null }
-          : {}),
         overlayConfig: dto.overlayConfig as unknown as Prisma.InputJsonValue | undefined,
         contentConfig: dto.contentConfig as Prisma.InputJsonValue | undefined,
       },
     });
-    if (dto.mode === InvitationDesignMode.GENERATED && current.backgroundObjectKey)
-      await this.storage
-        .delete(current.backgroundObjectKey)
-        .catch(() => this.logger.warn('Previous invitation background cleanup failed'));
     this.log(user, 'INVITATION_DESIGN_UPDATED', id, { coupleId });
     return this.present(d);
   }
@@ -141,8 +138,13 @@ export class InvitationDesignsService {
   }
   async background(coupleId: string, id: string, file: UploadFile | undefined, user: AuthUser) {
     const d = await this.design(coupleId, id, user);
+    if (d.mode !== InvitationDesignMode.UPLOADED)
+      throw new ConflictException({
+        code: 'DESIGN_MODE_IMMUTABLE',
+        message: 'Backgrounds can only be uploaded to an UPLOADED design',
+      });
     const max = this.config.get<number>('STORAGE_MAX_UPLOAD_BYTES') ?? 10 * 1024 * 1024;
-    validateUpload(file, max);
+    validateUpload(file, max, ['image/png', 'image/jpeg', 'image/webp']);
     const key = `couples/${coupleId}/designs/${id}/background-${randomUUID()}`;
     await this.storage.put(key, file.buffer, file.mimetype);
     let result;
@@ -150,8 +152,6 @@ export class InvitationDesignsService {
       result = await this.prisma.invitationDesign.update({
         where: { id },
         data: {
-          mode: InvitationDesignMode.UPLOADED,
-          templateKey: null,
           backgroundObjectKey: key,
           backgroundMimeType: file.mimetype,
         },

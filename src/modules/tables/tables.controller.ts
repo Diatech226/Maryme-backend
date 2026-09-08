@@ -83,3 +83,22 @@ export class TablesController {
     return this.service.assign(c, guestId, { ...d, tableId }, u);
   }
 }
+
+@ApiTags('Wedding tables')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.SUPER_ADMIN, UserRole.COUPLE)
+@Controller('couples/:coupleId/guests')
+export class GuestTableAssignmentController {
+  constructor(private readonly service: TablesService) {}
+
+  @Patch(':guestId/table')
+  assignOrUnassign(
+    @Param('coupleId') coupleId: string,
+    @Param('guestId') guestId: string,
+    @Body() dto: AssignGuestTableDto,
+    @CurrentUser() user: AuthUser,
+  ) {
+    return this.service.assign(coupleId, guestId, dto, user);
+  }
+}
