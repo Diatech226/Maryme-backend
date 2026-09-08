@@ -97,3 +97,17 @@ CI Windows vérifie Node 22, Prisma generate/validate, lint et build.
 
 Voir [l'architecture](docs/ARCHITECTURE.md) et le
 [déploiement](docs/DEPLOYMENT.md).
+
+# Private invitation file storage
+
+Invitation backgrounds and generated PNG/PDF artifacts are private objects. Development can use
+`STORAGE_LOCAL_DIR` (default `.storage`), but local files on Render are **not durable** across a
+restart or deployment. Production must configure an S3-compatible store with
+`STORAGE_ENDPOINT`, `STORAGE_BUCKET`, `STORAGE_REGION`, `STORAGE_ACCESS_KEY_ID`, and
+`STORAGE_SECRET_ACCESS_KEY`. The application emits a prominent warning when production starts
+without `STORAGE_ENDPOINT`.
+
+Public invitation share links serve the image when an artifact has both an image and PDF, and fall
+back to the PDF otherwise. Only SHA-256 token hashes are stored. Existing share-link listings
+therefore expose metadata for active links, not their unrecoverable URL; create a new link when a
+new URL is needed.

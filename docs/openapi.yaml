@@ -622,20 +622,28 @@ x-maryme-invitation-api:
       - GET,PATCH,DELETE /couples/{coupleId}/invitation-designs/{designId}
       - POST /couples/{coupleId}/invitation-designs/{designId}/activate
       - POST multipart/form-data /couples/{coupleId}/invitation-designs/{designId}/background
+      - GET /couples/{coupleId}/invitation-designs/{designId}/background
     modes: [GENERATED, UPLOADED]
+    fields:
+      [name, mode, templateKey, canvasWidth, canvasHeight, overlayConfig, contentConfig, isActive]
     uploads: [image/png, image/jpeg, image/webp, application/pdf]
     overlayCoordinates: normalized 0..1
   artifacts:
     paths:
       - POST multipart/form-data /invitations/{invitationId}/artifact
       - GET /guests/{guestId}/invitation-artifacts
+      - GET /couples/{coupleId}/invitation-artifacts?guestId={guestId}&stale={boolean}&page={page}&limit={limit}
       - GET /invitation-artifacts/{artifactId}/download?format=image|pdf
-    stale: Guest.updatedAt or InvitationDesign.updatedAt is newer than the generation snapshot
+    stale: Guest.updatedAt, InvitationDesign.updatedAt, or Couple.updatedAt is newer than the generation snapshot
     persisted: true
   sharing:
     paths:
       - POST /invitation-artifacts/{artifactId}/share-link
+      - GET /invitation-artifacts/{artifactId}/share-links
       - GET /public/invitations/share/{opaqueToken}
       - POST /invitation-share-links/{id}/revoke
+    createResponse: [id, shareUrl, expiresAt]
+    listResponse: [id, expiresAt, createdAt, openedAt]
+    defaultFile: image when present, otherwise PDF
     tokenStorage: SHA-256 hash only
     expiration: accessClosesAt, otherwise weddingDate plus one day, capped by SHARE_LINK_MAX_DAYS

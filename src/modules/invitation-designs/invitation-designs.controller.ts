@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -13,6 +14,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiTags } from '@nestjs/swagger';
 import { UserRole } from '@prisma/client';
+import { Response } from 'express';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -80,5 +82,15 @@ export class InvitationDesignsController {
     @CurrentUser() u: AuthUser,
   ) {
     return this.s.background(c, id, f, u);
+  }
+  @Get(':designId/background')
+  async downloadBackground(
+    @Param('coupleId') c: string,
+    @Param('designId') id: string,
+    @CurrentUser() u: AuthUser,
+    @Res() res: Response,
+  ) {
+    const file = await this.s.downloadBackground(c, id, u);
+    res.type(file.contentType).send(file.body);
   }
 }

@@ -20,7 +20,12 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthUser } from '../../common/types/auth-user';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UploadFile } from '../storage/upload-validation';
-import { ArtifactFormatDto, CreateShareLinkDto, UploadArtifactDto } from './dto/artifact.dto';
+import {
+  ArtifactFormatDto,
+  ArtifactListQueryDto,
+  CreateShareLinkDto,
+  UploadArtifactDto,
+} from './dto/artifact.dto';
 import { InvitationArtifactsService } from './invitation-artifacts.service';
 @ApiTags('Invitation artifacts')
 @ApiBearerAuth()
@@ -51,6 +56,13 @@ export class InvitationArtifactsController {
   ) {
     return this.s.list(id, u);
   }
+  @Get('couples/:coupleId/invitation-artifacts') listForCouple(
+    @Param('coupleId') id: string,
+    @Query() query: ArtifactListQueryDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.listForCouple(id, query, u);
+  }
   @Get('invitation-artifacts/:artifactId/download') async download(
     @Param('artifactId') id: string,
     @Query() q: ArtifactFormatDto,
@@ -70,6 +82,12 @@ export class InvitationArtifactsController {
   ) {
     return this.s.share(id, d, u);
   }
+  @Get('invitation-artifacts/:artifactId/share-links') shareLinks(
+    @Param('artifactId') id: string,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.shareLinks(id, u);
+  }
   @Post('invitation-share-links/:id/revoke') revoke(
     @Param('id') id: string,
     @CurrentUser() u: AuthUser,
@@ -83,6 +101,10 @@ export class PublicInvitationSharesController {
   constructor(private s: InvitationArtifactsService) {}
   @Get(':token') async open(@Param('token') token: string, @Res() res: Response) {
     const f = await this.s.publicOpen(token);
-    res.type(f.contentType).send(f.body);
+    res
+      .type(f.contentType)
+      .attachment(f.contentType === 'application/pdf' ? 'invitation.pdf' : 'invitation')
+      .set('Cache-Control', 'private, no-store')
+      .send(f.body);
   }
 }
