@@ -186,9 +186,12 @@ export class InvitationArtifactsService {
     const a = await this.artifact(id, user);
     const maximumDays = this.config.get<number>('SHARE_LINK_MAX_DAYS') ?? 30;
     const hardMax = new Date(Date.now() + maximumDays * 86400000);
-    const fallback = new Date(a.couple.weddingDate.getTime() + 86400000);
-    const requested = dto.expiresAt ?? a.couple.accessClosesAt ?? fallback;
-    const expiresAt = requested < hardMax ? requested : hardMax;
+    const eventBoundary =
+      a.couple.accessClosesAt ?? new Date(a.couple.weddingDate.getTime() + 86400000);
+    const requested = dto.expiresAt ?? eventBoundary;
+    const expiresAt = new Date(
+      Math.min(requested.getTime(), eventBoundary.getTime(), hardMax.getTime()),
+    );
     if (expiresAt <= new Date())
       throw new BadRequestException('Share link expiration must be in the future');
     const token = randomBytes(32).toString('base64url');

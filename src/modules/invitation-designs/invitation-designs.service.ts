@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -16,6 +17,7 @@ import { UploadFile, validateUpload } from '../storage/upload-validation';
 import { CreateInvitationDesignDto, UpdateInvitationDesignDto } from './dto/invitation-design.dto';
 @Injectable()
 export class InvitationDesignsService {
+  private readonly logger = new Logger(InvitationDesignsService.name);
   private readonly activationLocks = new Map<string, Promise<void>>();
   constructor(
     private prisma: PrismaService,
@@ -119,15 +121,27 @@ export class InvitationDesignsService {
     validateUpload(file, max);
     const key = `couples/${coupleId}/designs/${id}/background-${randomUUID()}`;
     await this.storage.put(key, file.buffer, file.mimetype);
-    if (d.backgroundObjectKey) await this.storage.delete(d.backgroundObjectKey);
-    const result = await this.prisma.invitationDesign.update({
-      where: { id },
-      data: {
-        mode: InvitationDesignMode.UPLOADED,
-        backgroundObjectKey: key,
-        backgroundMimeType: file.mimetype,
-      },
-    });
+    let result;
+    try {
+      result = await this.prisma.invitationDesign.update({
+        where: { id },
+        data: {
+          mode: InvitationDesignMode.UPLOADED,
+          backgroundObjectKey: key,
+          backgroundMimeType: file.mimetype,
+        },
+      });
+    } catch (error) {
+      await this.storage.delete(key);
+      throw error;
+    }
+    // The database must point at the new object before the previous one is removed.
+    // A failed cleanup only leaves an inaccessible orphan; it never breaks the design.
+    if (d.backgroundObjectKey) {
+      await this.storage
+        .delete(d.backgroundObjectKey)
+        .catch(() => this.logger.warn('Previous invitation background cleanup failed'));
+    }
     this.log(user, 'INVITATION_BACKGROUND_UPLOADED', id, { coupleId, mimeType: file.mimetype });
     return this.present(result);
   }

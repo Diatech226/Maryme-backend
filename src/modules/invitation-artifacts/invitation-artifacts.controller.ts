@@ -70,10 +70,12 @@ export class InvitationArtifactsController {
     @Res() res: Response,
   ) {
     const f = await this.s.download(id, q.format, u);
-    res
-      .type(f.contentType)
-      .attachment(`invitation-${id}.${q.format === 'pdf' ? 'pdf' : 'img'}`)
-      .send(f.body);
+    const extension =
+      q.format === 'pdf'
+        ? 'pdf'
+        : ({ 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }[f.contentType] ??
+          'bin');
+    res.type(f.contentType).attachment(`invitation-${id}.${extension}`).send(f.body);
   }
   @Post('invitation-artifacts/:artifactId/share-link') share(
     @Param('artifactId') id: string,
@@ -101,9 +103,18 @@ export class PublicInvitationSharesController {
   constructor(private s: InvitationArtifactsService) {}
   @Get(':token') async open(@Param('token') token: string, @Res() res: Response) {
     const f = await this.s.publicOpen(token);
+    const extension =
+      (
+        {
+          'application/pdf': 'pdf',
+          'image/png': 'png',
+          'image/jpeg': 'jpg',
+          'image/webp': 'webp',
+        } as Record<string, string>
+      )[f.contentType] ?? 'bin';
     res
       .type(f.contentType)
-      .attachment(f.contentType === 'application/pdf' ? 'invitation.pdf' : 'invitation')
+      .attachment(`invitation.${extension}`)
       .set('Cache-Control', 'private, no-store')
       .send(f.body);
   }

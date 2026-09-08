@@ -105,7 +105,7 @@ Invitation backgrounds and generated PNG/PDF artifacts are private objects. Deve
 restart or deployment. Production must configure an S3-compatible store with
 `STORAGE_ENDPOINT`, `STORAGE_BUCKET`, `STORAGE_REGION`, `STORAGE_ACCESS_KEY_ID`, and
 `STORAGE_SECRET_ACCESS_KEY`. The application emits a prominent warning when production starts
-without `STORAGE_ENDPOINT`.
+without the complete persistent-storage configuration.
 
 Public invitation share links serve the image when an artifact has both an image and PDF, and fall
 back to the PDF otherwise. Only SHA-256 token hashes are stored. Existing share-link listings

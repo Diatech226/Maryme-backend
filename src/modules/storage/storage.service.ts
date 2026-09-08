@@ -15,11 +15,21 @@ export class StorageService implements OnModuleInit {
   constructor(private readonly config: ConfigService) {}
 
   onModuleInit(): void {
-    if (this.config.get<string>('NODE_ENV') === 'production' && !this.endpoint) {
+    if (this.config.get<string>('NODE_ENV') === 'production' && !this.hasPersistentConfig()) {
       this.logger.warn(
-        'WARNING: persistent object storage is not configured. Invitation files may be lost after restart/deploy.',
+        'WARNING: complete persistent object storage configuration is missing; local invitation files may be lost after restart/deploy. Configure STORAGE_ENDPOINT, STORAGE_REGION, STORAGE_BUCKET, STORAGE_ACCESS_KEY_ID and STORAGE_SECRET_ACCESS_KEY.',
       );
     }
+  }
+
+  private hasPersistentConfig(): boolean {
+    return [
+      'STORAGE_ENDPOINT',
+      'STORAGE_REGION',
+      'STORAGE_BUCKET',
+      'STORAGE_ACCESS_KEY_ID',
+      'STORAGE_SECRET_ACCESS_KEY',
+    ].every((name) => !!this.config.get<string>(name));
   }
 
   private get endpoint(): string | undefined {
