@@ -1,6 +1,99 @@
 import { UserRole } from '@prisma/client';
 import { GuestsService } from './guests.service';
 
+describe('GuestsService coupon allocation', () => {
+  const user = { sub: 'user-1', role: UserRole.COUPLE, coupleId: 'couple-1' };
+  const baseGuest = {
+    firstName: 'Awa',
+    lastName: 'Diallo',
+    side: 'BRIDE',
+    coupons: 3,
+    category: 'FRIENDS',
+  };
+
+  function harness() {
+    let sequence = 0;
+    const created: Array<Record<string, unknown>> = [];
+    const tx = {
+      weddingTable: { findFirst: jest.fn(), findUnique: jest.fn() },
+      checkIn: { count: jest.fn().mockResolvedValue(0) },
+      invitation: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      coupon: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      guest: {
+        create: jest.fn(({ data }) => {
+          const guest = { id: `guest-${++sequence}`, ...data };
+          created.push(guest);
+          return guest;
+        }),
+        deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+        findUniqueOrThrow: jest.fn(({ where }) => ({
+          ...created.find((guest) => guest.id === where.id),
+          couponNumbers: [],
+        })),
+      },
+    };
+    const prisma = {
+      couple: { findFirst: jest.fn().mockResolvedValue({ id: 'couple-1', guestQuota: 100 }) },
+      guest: { aggregate: jest.fn().mockResolvedValue({ _sum: { coupons: 0 } }) },
+      $transaction: jest.fn((callback) => callback(tx)),
+    };
+    const couponPool = {
+      ensurePool: jest.fn(),
+      assignNumbers: jest.fn(),
+      assignLowest: jest.fn(),
+    };
+    return {
+      service: new GuestsService(
+        prisma as never,
+        { record: jest.fn() } as never,
+        couponPool as never,
+      ),
+      couponPool,
+      tx,
+    };
+  }
+
+  it('automatically assigns the lowest coupons when couponNumbers is absent', async () => {
+    const { service, couponPool, tx } = harness();
+    await service.create('couple-1', baseGuest as never, user);
+    expect(couponPool.assignLowest).toHaveBeenCalledWith('guest-1', 3, tx);
+    expect(couponPool.assignNumbers).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { numbers: [12, 13, 14], label: 'an exact manual allocation' },
+    { numbers: [], label: 'an explicitly empty manual allocation' },
+  ])('delegates $label to CouponPoolService.assignNumbers', async ({ numbers }) => {
+    const { service, couponPool, tx } = harness();
+    await service.create('couple-1', { ...baseGuest, couponNumbers: numbers } as never, user);
+    expect(couponPool.assignNumbers).toHaveBeenCalledWith('guest-1', numbers, tx);
+    expect(couponPool.assignLowest).not.toHaveBeenCalled();
+  });
+
+  it('honours explicit coupon numbers for every bulk guest', async () => {
+    const { service, couponPool, tx } = harness();
+    await service.bulk(
+      'couple-1',
+      { mode: 'append', guests: [{ ...baseGuest, couponNumbers: [12, 13, 14] }] } as never,
+      user,
+    );
+    expect(couponPool.assignNumbers).toHaveBeenCalledWith('guest-1', [12, 13, 14], tx);
+    expect(couponPool.assignLowest).not.toHaveBeenCalled();
+  });
+
+  it('propagates an allocation conflict so the enclosing bulk transaction can roll back', async () => {
+    const { service, couponPool } = harness();
+    couponPool.assignNumbers.mockRejectedValue({ response: { code: 'COUPON_ALREADY_ASSIGNED' } });
+    await expect(
+      service.bulk(
+        'couple-1',
+        { mode: 'replace', guests: [{ ...baseGuest, couponNumbers: [12, 13, 14] }] } as never,
+        user,
+      ),
+    ).rejects.toMatchObject({ response: { code: 'COUPON_ALREADY_ASSIGNED' } });
+  });
+});
+
 describe('GuestsService invitation delivery', () => {
   const user = { sub: 'user-1', role: UserRole.COUPLE, coupleId: 'couple-1' };
   const couple = { id: 'couple-1', guestQuota: 100 };

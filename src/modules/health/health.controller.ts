@@ -15,14 +15,20 @@ export class HealthController {
   async check() {
     try {
       await this.prisma.$runCommandRaw({ ping: 1 });
-      return {
-        status: 'ok',
-        database: 'connected',
-        storage: await this.storage.status(),
-        timestamp: new Date().toISOString(),
-      };
     } catch {
-      throw new ServiceUnavailableException('Database unavailable');
+      throw new ServiceUnavailableException({
+        status: 'degraded',
+        database: 'disconnected',
+      });
     }
+
+    const storage = await this.storage.status();
+    const health = {
+      status: storage.connected ? 'ok' : 'degraded',
+      database: 'connected',
+      storage,
+    };
+    if (!storage.connected) throw new ServiceUnavailableException(health);
+    return health;
   }
 }

@@ -168,7 +168,8 @@ export class GuestsService {
         data: { ...data, coupleId: id } as Prisma.GuestUncheckedCreateInput,
       });
       await this.couponPool.ensurePool(id, c.guestQuota, tx);
-      if (dto.couponNumbers) await this.couponPool.assignNumbers(guest.id, dto.couponNumbers, tx);
+      if (dto.couponNumbers !== undefined)
+        await this.couponPool.assignNumbers(guest.id, dto.couponNumbers, tx);
       else await this.couponPool.assignLowest(guest.id, guest.coupons, tx);
       return tx.guest.findUniqueOrThrow({
         where: { id: guest.id },
@@ -212,7 +213,9 @@ export class GuestsService {
         const created = await tx.guest.create({
           data: { ...data, coupleId: id } as Prisma.GuestUncheckedCreateInput,
         });
-        await this.couponPool.assignLowest(created.id, created.coupons, tx);
+        if (guest.couponNumbers !== undefined)
+          await this.couponPool.assignNumbers(created.id, guest.couponNumbers, tx);
+        else await this.couponPool.assignLowest(created.id, created.coupons, tx);
       }
     });
     void this.audit.record({
@@ -298,7 +301,7 @@ export class GuestsService {
         const next = value === '__CLEAR__' ? null : value;
         if (guest[key] !== next) changes[key] = next;
       }
-      if ((changes.coupons !== undefined || row.couponNumbers) && guest.checkIn)
+      if ((changes.coupons !== undefined || row.couponNumbers !== undefined) && guest.checkIn)
         return {
           index,
           action: 'CONFLICT' as const,
@@ -310,7 +313,7 @@ export class GuestsService {
       return {
         index,
         action:
-          Object.keys(changes).length || row.couponNumbers
+          Object.keys(changes).length || row.couponNumbers !== undefined
             ? ('UPDATE' as const)
             : ('UNCHANGED' as const),
         changes,
@@ -396,8 +399,8 @@ export class GuestsService {
           guestId = guest.id;
           count = guest.coupons;
         }
-        if (plan.row.couponNumbers)
-          await this.assignImportedNumbers(tx, id, guestId, count, plan.row.couponNumbers);
+        if (plan.row.couponNumbers !== undefined)
+          await this.couponPool.assignNumbers(guestId, plan.row.couponNumbers, tx);
         else if (dto.autoAssignCoupons) await this.couponPool.syncCount(guestId, count, tx);
       }
     });
@@ -417,6 +420,7 @@ export class GuestsService {
       side: row.side,
       family: row.family,
       coupons: row.coupons ?? row.couponNumbers?.length ?? 1,
+      couponNumbers: row.couponNumbers,
       category: row.category ?? ('FRIENDS' as CreateGuestDto['category']),
       rsvpStatus: row.rsvpStatus,
       dietary: row.dietary,
@@ -430,37 +434,6 @@ export class GuestsService {
       lodgingNeeded: row.lodgingNeeded,
       notes: row.notes,
     };
-  }
-  private async assignImportedNumbers(
-    tx: Prisma.TransactionClient,
-    coupleId: string,
-    guestId: string,
-    count: number,
-    numbers: number[],
-  ) {
-    if (numbers.length !== count)
-      throw new ConflictException({
-        code: 'COUPON_COUNT_MISMATCH',
-        message: 'Nombre de coupons incohérent.',
-      });
-    const selected = await tx.coupon.findMany({ where: { coupleId, number: { in: numbers } } });
-    if (selected.length !== numbers.length)
-      throw new ConflictException({ code: 'COUPON_NOT_FOUND', message: 'Coupon inexistant.' });
-    if (selected.some((c) => c.status === 'USED'))
-      throw new ConflictException({ code: 'COUPON_ALREADY_USED', message: 'Coupon utilisé.' });
-    if (selected.some((c) => c.guestId && c.guestId !== guestId))
-      throw new ConflictException({
-        code: 'COUPON_ALREADY_ASSIGNED',
-        message: 'Coupon attribué à un autre invité.',
-      });
-    await tx.coupon.updateMany({
-      where: { guestId, status: 'ASSIGNED', number: { notIn: numbers } },
-      data: { guestId: null, status: 'AVAILABLE', assignedAt: null, releasedAt: new Date() },
-    });
-    await tx.coupon.updateMany({
-      where: { coupleId, number: { in: numbers } },
-      data: { guestId, status: 'ASSIGNED', assignedAt: new Date(), releasedAt: null },
-    });
   }
   async get(id: string, user: AuthUser) {
     const g = await this.prisma.guest.findFirst({
@@ -569,7 +542,8 @@ export class GuestsService {
     const result = await this.prisma.$transaction(async (tx) => {
       const data = await this.guestData(tx, g.coupleId, dto, g);
       const updated = await tx.guest.update({ where: { id }, data });
-      if (dto.couponNumbers) await this.couponPool.assignNumbers(id, dto.couponNumbers, tx);
+      if (dto.couponNumbers !== undefined)
+        await this.couponPool.assignNumbers(id, dto.couponNumbers, tx);
       else if (dto.coupons !== undefined) await this.couponPool.syncCount(id, dto.coupons, tx);
       if (dto.couponNumbers === undefined && dto.coupons === undefined)
         return { ...updated, couponNumbers: g.couponNumbers };

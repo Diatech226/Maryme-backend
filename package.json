@@ -17,6 +17,7 @@
     "format": "prettier --write \"{src,test,prisma,docs}/**/*.{ts,md,json,yaml}\"",
     "test": "jest --runInBand",
     "test:e2e": "jest --config test/jest-e2e.json --runInBand",
+    "test:gridfs": "jest src/modules/storage/storage.gridfs.integration.spec.ts --runInBand",
     "test:cov": "jest --coverage --runInBand",
     "prisma:generate": "prisma generate",
     "prisma:push": "prisma db push",

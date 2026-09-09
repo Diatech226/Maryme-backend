@@ -14,6 +14,26 @@ Le bootstrap SUPER_ADMIN est une opération explicite après déploiement :
 
 ## Render et frontend Vercel
 
+Configurer au minimum les variables suivantes dans l'environnement Render (les
+valeurs sensibles doivent rester des secrets Render, jamais des fichiers Git) :
+
+```text
+NODE_ENV=production
+DATABASE_URL=mongodb+srv://...
+STORAGE_DRIVER=gridfs
+GRIDFS_BUCKET=maryme_storage
+STORAGE_MAX_UPLOAD_BYTES=10485760
+FRONTEND_URL=https://...
+CORS_ORIGINS=https://...
+PUBLIC_API_URL=https://<render>.onrender.com/api/v1
+JWT_ACCESS_SECRET=...
+JWT_REFRESH_SECRET=...
+COOKIE_SECURE=true
+```
+
+`STORAGE_LOCAL_DIR` n'est pas nécessaire en production : le stockage local y est
+interdit et GridFS est obligatoire.
+
 En production, définir `FRONTEND_URL=https://maryme.vercel.app` et inclure cette
 origine exacte dans la liste séparée par des virgules `CORS_ORIGINS` (ainsi que
 chaque éventuel domaine Vercel personnalisé autorisé). Les cookies refresh sont
