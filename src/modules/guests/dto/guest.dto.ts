@@ -2,6 +2,7 @@ import { DietaryRequirement, GuestCategory, GuestSide, RsvpStatus } from '@prism
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
+  ArrayMinSize,
   ArrayUnique,
   IsArray,
   IsBoolean,
@@ -23,6 +24,7 @@ export class CreateGuestDto {
   @IsInt() @Min(1) @Max(20) coupons!: number;
   @IsOptional()
   @IsArray()
+  @ArrayMinSize(1)
   @ArrayUnique()
   @IsInt({ each: true })
   @Min(1, { each: true })
@@ -55,6 +57,7 @@ export class UpdateGuestDto {
   @IsOptional() @IsInt() @Min(1) @Max(20) coupons?: number;
   @IsOptional()
   @IsArray()
+  @ArrayMinSize(1)
   @ArrayUnique()
   @IsInt({ each: true })
   @Min(1, { each: true })
@@ -100,7 +103,12 @@ export class ImportGuestRowDto {
   @IsEnum(GuestSide) side!: GuestSide;
   @IsOptional() @IsString() family?: string;
   @IsOptional() @IsInt() @Min(1) @Max(20) coupons?: number;
-  @IsOptional() @IsArray() @ArrayUnique() @IsInt({ each: true }) couponNumbers?: number[];
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsInt({ each: true })
+  couponNumbers?: number[];
   @IsOptional() @IsEnum(GuestCategory) category?: GuestCategory;
   @IsOptional() @IsEnum(RsvpStatus) rsvpStatus?: RsvpStatus;
   @IsOptional() @IsEnum(DietaryRequirement) dietary?: DietaryRequirement;
