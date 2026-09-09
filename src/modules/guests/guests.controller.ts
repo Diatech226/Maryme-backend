@@ -24,6 +24,7 @@ import {
   GuestImportDto,
   MarkInvitationsSentDto,
   UpdateGuestDto,
+  UpdateInvitationDeliveryDto,
 } from './dto/guest.dto';
 import { GuestsService } from './guests.service';
 @ApiTags('Guests')
@@ -75,6 +76,14 @@ export class GuestsController {
     @CurrentUser() u: AuthUser,
   ) {
     return this.s.markInvitationSent(id, u);
+  }
+  @Patch('guests/:id/invitation-delivery')
+  updateInvitationDelivery(
+    @Param('id') id: string,
+    @Body() dto: UpdateInvitationDeliveryDto,
+    @CurrentUser() u: AuthUser,
+  ) {
+    return this.s.updateInvitationDelivery(id, dto.sent, u);
   }
   @Post('couples/:coupleId/invitations/mark-sent') markInvitationsSent(
     @Param('coupleId') id: string,

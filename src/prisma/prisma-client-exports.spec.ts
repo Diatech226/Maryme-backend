@@ -9,13 +9,14 @@ import {
   RsvpStatus,
   UserRole,
 } from '@prisma/client';
-import type { User } from '@prisma/client';
+import type { User, WeddingMedia } from '@prisma/client';
 
 type GeneratedInputTypes = [
   Prisma.CheckInWhereInput,
   Prisma.GuestWhereInput,
   Prisma.AuditLogUncheckedCreateInput,
   User,
+  WeddingMedia,
 ];
 
 describe('generated Prisma Client exports', () => {
@@ -31,7 +32,16 @@ describe('generated Prisma Client exports', () => {
     expect(RsvpStatus.CONFIRMED).toBe('CONFIRMED');
     expect(DietaryRequirement.HALAL).toBe('HALAL');
     expect(Prisma.dmmf.datamodel.models.map(({ name }) => name)).toEqual(
-      expect.arrayContaining(['User', 'Couple', 'Guest', 'Coupon', 'Invitation', 'CheckIn', 'AuditLog']),
+      expect.arrayContaining([
+        'User',
+        'Couple',
+        'Guest',
+        'WeddingMedia',
+        'Coupon',
+        'Invitation',
+        'CheckIn',
+        'AuditLog',
+      ]),
     );
     expect(PrismaClient).toBeDefined();
   });

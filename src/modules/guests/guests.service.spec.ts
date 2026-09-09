@@ -143,6 +143,34 @@ describe('GuestsService invitation delivery', () => {
     expect(prisma.guest.update).toHaveBeenCalledTimes(1);
   });
 
+  it('reuses invitationSentDate and can clear delivery without creating an invitation', async () => {
+    const { service, prisma } = setup();
+    const marked = await service.updateInvitationDelivery('guest-1', true, user);
+    expect(marked.invitationSentDate).toBeInstanceOf(Date);
+    await expect(service.updateInvitationDelivery('guest-1', false, user)).resolves.toEqual({
+      guestId: 'guest-1',
+      invitationSentDate: null,
+    });
+    expect(prisma.guest.update).toHaveBeenLastCalledWith({
+      where: { id: 'guest-1' },
+      data: { invitationSentDate: null },
+    });
+  });
+
+  it('exposes tableNumber, phone, and invitationSentDate in the guest contract', async () => {
+    const { service, prisma } = setup();
+    const now = new Date();
+    prisma.guest.findFirst.mockResolvedValue(
+      active({ tableNumber: '8', phone: '+22670000000', invitationSentDate: now }),
+    );
+    const guest = await service.get('guest-1', user);
+    expect(guest).toMatchObject({
+      tableNumber: '8',
+      phone: '+22670000000',
+      invitationSentDate: now,
+    });
+  });
+
   it('bulk-updates only guests owned by the requested couple', async () => {
     const { service, prisma, audit } = setup();
     prisma.guest.findMany.mockResolvedValue([{ id: 'guest-1' }, { id: 'guest-2' }]);
