@@ -9,7 +9,8 @@ the `Coupon`/`CouponPool` workflow are the legacy business entitlement system; t
 supported but are never used as table seat identifiers.
 
 API REST Maryme en NestJS, Prisma 6 et MongoDB. Les routes métier restent sous
-`/api/v1`, Swagger sous `/api/docs`, et le serveur écoute sur le port `4000`.
+`/api/v1`, Swagger sous `/api/docs`, et le serveur écoute sur `0.0.0.0` avec le
+`PORT` fourni par l'environnement (`4000` uniquement par défaut en local).
 
 ## Prérequis Node.js 22
 
@@ -104,7 +105,8 @@ Le helper refuse sinon toute purge. La CI Linux lance un vrai replica set ; la
 CI Windows vérifie Node 22, Prisma generate/validate, lint et build.
 
 Voir [l'architecture](docs/ARCHITECTURE.md) et le
-[déploiement](docs/DEPLOYMENT.md).
+[déploiement](docs/DEPLOYMENT.md). Pour Render, suivre la procédure dédiée
+[DEPLOY_RENDER.md](docs/DEPLOY_RENDER.md).
 
 # Private invitation file storage (MongoDB GridFS)
 

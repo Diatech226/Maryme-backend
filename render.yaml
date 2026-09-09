@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: maryme-backend
+    runtime: node
+    branch: main
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: STORAGE_DRIVER
+        value: gridfs
+      - key: GRIDFS_BUCKET
+        value: maryme_storage
+      - key: STORAGE_MAX_UPLOAD_BYTES
+        value: "10485760"
+      - key: WEDDING_MEDIA_MAX_UPLOAD_BYTES
+        value: "5242880"
+      - key: PUBLIC_API_URL
+        sync: false

@@ -8,7 +8,13 @@ describe('SeatingService', () => {
   function harness(coupons = [1, 3]) {
     const state = {
       tables: [
-        { id: 'table1', coupleId: 'couple', number: 1, capacity: 10, side: GuestSide.GROOM },
+        {
+          id: 'table1',
+          coupleId: 'couple',
+          number: 1,
+          capacity: 10,
+          side: GuestSide.GROOM as GuestSide,
+        },
       ],
       guests: coupons.map((count, index) => ({
         id: `guest${index + 1}`,
@@ -41,8 +47,9 @@ describe('SeatingService', () => {
         upsert: jest.fn(({ create }) => {
           let table = state.tables.find((row) => row.number === create.number);
           if (!table) {
-            table = { id: `table${create.number}`, ...create };
-            state.tables.push(table);
+            const created = { id: `table${create.number}`, ...create };
+            state.tables.push(created);
+            table = created;
           }
           return table;
         }),
@@ -87,18 +94,27 @@ describe('SeatingService', () => {
         }),
       },
     });
+    let transactionQueue = Promise.resolve();
     const prisma = {
       couple: { findFirst: jest.fn().mockResolvedValue({ id: 'couple' }) },
       weddingTable: client().weddingTable,
-      $transaction: jest.fn(async (input: unknown) => {
+      $transaction: jest.fn((input: unknown) => {
         if (Array.isArray(input)) return Promise.all(input);
-        const snapshot = structuredClone(state);
-        try {
-          return await (input as (tx: ReturnType<typeof client>) => unknown)(client());
-        } catch (error) {
-          Object.assign(state, snapshot);
-          throw error;
-        }
+        const execute = async () => {
+          const snapshot = structuredClone(state);
+          try {
+            return await (input as (tx: ReturnType<typeof client>) => unknown)(client());
+          } catch (error) {
+            Object.assign(state, snapshot);
+            throw error;
+          }
+        };
+        const result = transactionQueue.then(execute, execute);
+        transactionQueue = result.then(
+          () => undefined,
+          () => undefined,
+        );
+        return result;
       }),
     };
     return { service: new SeatingService(prisma as never), state };
