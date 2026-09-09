@@ -5,12 +5,8 @@
   "description": "Official Maryme REST API",
   "license": "UNLICENSED",
   "scripts": {
-    "postinstall": "prisma generate",
-    "prebuild": "prisma generate",
-    "build": "nest build",
-    "prestart": "prisma generate",
+    "build": "npm run prisma:generate && nest build",
     "start": "nest start",
-    "prestart:dev": "prisma generate",
     "start:dev": "nest start --watch",
     "start:prod": "node dist/main.js",
     "lint": "tsc --noEmit",

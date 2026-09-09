@@ -408,7 +408,8 @@ export class GuestsService {
           guestId = guest.id;
           count = guest.coupons;
         } else {
-          if (plan.changes.coupons !== undefined && plan.changes.coupons !== plan.guest!.coupons) {
+          const changes = plan.changes as Record<string, unknown>;
+          if (changes.coupons !== undefined && changes.coupons !== plan.guest!.coupons) {
             const assigned = await tx.tableSeatAssignment.count({
               where: { guestId: plan.guest!.id },
             });

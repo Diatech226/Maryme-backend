@@ -19,6 +19,7 @@ describe('GuestsService coupon allocation', () => {
       checkIn: { count: jest.fn().mockResolvedValue(0) },
       invitation: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       coupon: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      tableSeatAssignment: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
       guest: {
         create: jest.fn(({ data }) => {
           const guest = { id: `guest-${++sequence}`, ...data };

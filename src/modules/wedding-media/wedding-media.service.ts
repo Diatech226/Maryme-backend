@@ -94,6 +94,9 @@ export class WeddingMediaService {
       });
 
     const objectKey = `couples/${coupleId}/wedding-media/${dto.slot}-${randomUUID()}`;
+    // Prisma returns mutable plain objects. Preserve the old key before updating
+    // metadata so cleanup can never target the replacement object.
+    const previousObjectKey = current?.objectKey;
     await this.storage.put(objectKey, file.buffer, file.mimetype.toLowerCase());
     let saved: WeddingMedia;
     try {
@@ -123,9 +126,9 @@ export class WeddingMediaService {
         .catch(() => this.logger.error(`Failed to remove compensated GridFS object ${objectKey}`));
       throw error;
     }
-    if (current)
+    if (previousObjectKey)
       await this.storage
-        .delete(current.objectKey)
+        .delete(previousObjectKey)
         .catch(() =>
           this.logger.warn(`Previous WeddingMedia object cleanup failed: ${current.id}`),
         );
