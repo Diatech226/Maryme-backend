@@ -153,4 +153,28 @@ describe('TablesService', () => {
       new TablesService(prisma as never).assign('couple', 'g', { tableId: 't' }, user),
     ).rejects.toThrow('Table capacity exceeded');
   });
+
+  it('preserves the legacy side override rule when delegating to SeatingService', async () => {
+    const prisma = {
+      couple: { findFirst: jest.fn().mockResolvedValue({ id: 'couple' }) },
+      guest: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'g', coupleId: 'couple', side: GuestSide.GROOM, coupons: 1,
+        }),
+      },
+      weddingTable: {
+        findFirst: jest.fn().mockResolvedValue({ id: 't', coupleId: 'couple', side: GuestSide.BRIDE }),
+      },
+    };
+    const seating = { assign: jest.fn().mockResolvedValue({ id: 'g' }), unassign: jest.fn() };
+    const service = new TablesService(prisma as never, seating as never);
+    await expect(service.assign('couple', 'g', { tableId: 't' }, user)).rejects.toThrow(
+      'Guest side does not match table side',
+    );
+    expect(seating.assign).not.toHaveBeenCalled();
+    await expect(
+      service.assign('couple', 'g', { tableId: 't', allowSideOverride: true }, user),
+    ).resolves.toEqual({ id: 'g' });
+    expect(seating.assign).toHaveBeenCalledTimes(1);
+  });
 });

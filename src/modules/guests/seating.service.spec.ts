@@ -111,6 +111,8 @@ describe('SeatingService', () => {
 
   it('initializes only missing tables 1..40 idempotently at capacity 10', async () => {
     const { service, state } = harness();
+    state.guests[0].assignedSeats = ['legacy-7'];
+    state.guests[0].tableNumber = '22';
     await service.initialize('couple', user);
     await service.initialize('couple', user);
     expect(state.tables).toHaveLength(40);
@@ -118,6 +120,8 @@ describe('SeatingService', () => {
       Array.from({ length: 40 }, (_, index) => index + 1),
     );
     expect(state.tables.every((table) => table.capacity === 10)).toBe(true);
+    expect(state.seats).toEqual([]);
+    expect(state.guests[0]).toMatchObject({ tableNumber: '22', assignedSeats: ['legacy-7'] });
   });
 
   it.each([0, 41])('rejects table number %s', async (number) => {
@@ -211,6 +215,36 @@ describe('SeatingService', () => {
     await expect(
       service.bulk('couple', 'table1', { guestIds: ['guest1', 'guest2'], autoAssign: true }, user),
     ).rejects.toMatchObject({ response: { code: 'NOT_ENOUGH_SEATS' } });
+  });
+
+  it('fills exactly 10 physical seats for coupon counts 3 + 2 + 5', async () => {
+    const { service, state } = harness([3, 2, 5]);
+    await service.bulk(
+      'couple',
+      'table1',
+      { guestIds: ['guest1', 'guest2', 'guest3'], autoAssign: true },
+      user,
+    );
+    expect(state.seats).toHaveLength(10);
+  });
+
+  it.each(['automatic', 'manual'])('rejects 11 requested physical seats in %s bulk', async (mode) => {
+    const { service, state } = harness([3, 3, 3, 2]);
+    const guestIds = state.guests.map((guest) => guest.id);
+    const request =
+      mode === 'automatic'
+        ? { guestIds, autoAssign: true }
+        : {
+            assignments: guestIds.map((guestId, index) => ({
+              guestId,
+              seatNumbers: Array.from({ length: state.guests[index].coupons }, (_, seat) =>
+                Math.min(10, index * 3 + seat + 1),
+              ),
+            })),
+          };
+    await expect(service.bulk('couple', 'table1', request, user)).rejects.toMatchObject({
+      response: { code: 'NOT_ENOUGH_SEATS' },
+    });
   });
 
   it('supports a bulk selection of 10 contacts when total requested seats fit', async () => {
