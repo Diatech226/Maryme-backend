@@ -23,3 +23,13 @@ contrôlées explicitement par les services et les soft deletes existants.
 The normalized spreadsheet endpoint is `POST /couples/{coupleId}/guests/import`. Use `mode=merge` (the default), `dryRun=true` for preview, then repeat with `dryRun=false`. Matching order is Maryme guest ID, external reference, unique normalized email, unique normalized phone, then the normalized name/side/family tuple. Ambiguous imports are rejected atomically. Empty/absent merge fields preserve server data; the documented `__CLEAR__` value explicitly clears nullable strings. Spreadsheet presence/check-in and invitation-download columns are deliberately not accepted: those values are server-authoritative.
 
 `append` always creates, while destructive `replace` retains its check-in safety restriction. Merge updates the existing guest document, preserving its ID, invitations, QR validity, and check-in. Explicit `couponNumbers` are validated and never steal assigned or used numbers.
+
+## Physical seating and legacy placement
+
+`TableSeatAssignment` is the sole source of truth for physical availability created by the Seating endpoints. `initialize` only creates missing tables numbered 1 through 40 at capacity 10; it is idempotent and deliberately never reads guests, deletes guests, or reconstructs assignments from legacy `Guest.tableId`, `Guest.tableNumber`, or `Guest.assignedSeats`. Availability is sorted and counts only `TableSeatAssignment` rows. Legacy spreadsheet imports may retain those guest columns, but generic guest create/update endpoints cannot change them. `Guest.coupons` remains a business coupon count and also determines how many physical seats a new Seating operation requests; coupons and seat assignments remain distinct records.
+
+Assign, move, bulk assignment, unassignment, and seated-guest deletion update assignment rows and the guest compatibility mirror in one database transaction. A seated guest's requested count must be unassigned before it can change.
+
+## Wedding media API projection
+
+Wedding media responses intentionally expose neither `coupleId` nor the storage-only `objectKey`. Frontends must retain `coupleId` from their route context rather than expecting it in a `WeddingMedia` response.

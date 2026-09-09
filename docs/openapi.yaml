@@ -680,12 +680,13 @@ paths:
     parameters: [{ $ref: '#/components/parameters/CoupleId' }]
     post:
       summary: Idempotently create missing tables 1 through 40
-      description: Existing tables, guests, and seat assignments are never removed or overwritten. Every newly created table has capacity 10.
+      description: Existing tables, guests, and seat assignments are never removed or overwritten. Every newly created table has capacity 10. No legacy Guest placement is backfilled into TableSeatAssignment.
       responses: { '200': { description: Current seating availability } }
   /couples/{coupleId}/seating/availability:
     parameters: [{ $ref: '#/components/parameters/CoupleId' }]
     get:
       summary: List real physical seat availability, sorted by table and seat
+      description: Counts only TableSeatAssignment rows; legacy Guest placement fields are intentionally ignored.
       responses:
         {
           '200':
@@ -1390,7 +1391,11 @@ components:
         properties:
           {
             status: { type: integer },
-            code: { type: string },
+            code:
+              {
+                type: string,
+                description: "Seating codes: TABLE_FULL, NOT_ENOUGH_SEATS, SEAT_ALREADY_ASSIGNED, SEAT_COUNT_MISMATCH, SEAT_NUMBER_OUT_OF_RANGE, TABLE_NUMBER_OUT_OF_RANGE, or SEATING_REASSIGN_REQUIRED. Other API domains define additional codes.",
+              },
             message: { type: string },
             details: { type: object },
           },

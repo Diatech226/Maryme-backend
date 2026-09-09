@@ -44,15 +44,18 @@ export class GuestsService {
   private async guestData(
     tx: Prisma.TransactionClient | PrismaService,
     coupleId: string,
-    dto: CreateGuestDto | UpdateGuestDto,
+    dto: CreateGuestDto | UpdateGuestDto | ImportGuestRowDto,
     current?: {
       id: string;
       side: CreateGuestDto['side'];
       coupons: number;
       tableId?: string | null;
     },
+    allowLegacySeating = false,
   ): Promise<Prisma.GuestUncheckedCreateInput | Prisma.GuestUncheckedUpdateInput> {
-    const { tableNumber, tableId, couponNumbers: _couponNumbers, ...fields } = dto;
+    const { tableNumber, tableId, couponNumbers: _couponNumbers, ...fields } =
+      dto as ImportGuestRowDto;
+    if (!allowLegacySeating) return fields as Prisma.GuestUncheckedUpdateInput;
     if (tableId === undefined && tableNumber === undefined) {
       if (dto.side !== undefined && current?.tableId) {
         const currentTable = await tx.weddingTable.findUnique({ where: { id: current.tableId } });
@@ -184,7 +187,12 @@ export class GuestsService {
     });
     return { ...g, couponNumbers: g.couponNumbers.map((coupon) => coupon.number) };
   }
-  async bulk(id: string, dto: BulkCreateGuestsDto, user: AuthUser) {
+  async bulk(
+    id: string,
+    dto: BulkCreateGuestsDto,
+    user: AuthUser,
+    allowLegacySeating = false,
+  ) {
     const c = await this.couple(id, user);
     const incoming = dto.guests.reduce((n, g) => n + g.coupons, 0);
     assertQuota(
@@ -206,10 +214,11 @@ export class GuestsService {
           where: { coupleId: id, status: 'ASSIGNED' },
           data: { guestId: null, status: 'AVAILABLE', assignedAt: null, releasedAt: new Date() },
         });
+        await tx.tableSeatAssignment.deleteMany({ where: { coupleId: id } });
         await tx.guest.deleteMany({ where: { coupleId: id } });
       }
       for (const guest of dto.guests) {
-        const data = await this.guestData(tx, id, guest);
+        const data = await this.guestData(tx, id, guest, undefined, allowLegacySeating);
         const created = await tx.guest.create({
           data: { ...data, coupleId: id } as Prisma.GuestUncheckedCreateInput,
         });
@@ -234,6 +243,7 @@ export class GuestsService {
         id,
         { mode: dto.mode, guests: dto.guests.map((row) => this.toCreate(row)) },
         user,
+        true,
       );
     await this.couponPool.ensurePool(id, couple.guestQuota);
     const existing = await this.prisma.guest.findMany({
@@ -380,7 +390,9 @@ export class GuestsService {
         let count: number;
         if (plan.action === 'CREATE') {
           const input = this.toCreate(plan.row);
-          const data = await this.guestData(tx, id, input);
+          // Legacy imports may preserve their historical table columns. They never
+          // create TableSeatAssignment rows or backfill modern physical seating.
+          const data = await this.guestData(tx, id, input, undefined, true);
           const guest = await tx.guest.create({
             data: {
               ...data,
@@ -391,7 +403,24 @@ export class GuestsService {
           guestId = guest.id;
           count = guest.coupons;
         } else {
-          const data = await this.guestData(tx, id, plan.changes as UpdateGuestDto, plan.guest);
+          if (plan.changes.coupons !== undefined && plan.changes.coupons !== plan.guest!.coupons) {
+            const assigned = await tx.tableSeatAssignment.count({
+              where: { guestId: plan.guest!.id },
+            });
+            if (assigned)
+              throw new ConflictException({
+                code: 'SEATING_REASSIGN_REQUIRED',
+                message:
+                  'Remove or update the guest seating before changing the requested seat count.',
+              });
+          }
+          const data = await this.guestData(
+            tx,
+            id,
+            plan.changes as ImportGuestRowDto,
+            plan.guest,
+            true,
+          );
           const guest = await tx.guest.update({
             where: { id: plan.guest!.id },
             data,
@@ -413,7 +442,8 @@ export class GuestsService {
     });
     return response;
   }
-  private toCreate(row: ImportGuestRowDto): CreateGuestDto {
+  private toCreate(row: ImportGuestRowDto): CreateGuestDto &
+    Pick<ImportGuestRowDto, 'tableId' | 'tableNumber'> {
     return {
       firstName: row.firstName,
       lastName: row.lastName,
@@ -553,6 +583,14 @@ export class GuestsService {
       assertQuota((await this.used(g.coupleId)) - g.coupons, dto.coupons, c.guestQuota);
     }
     const result = await this.prisma.$transaction(async (tx) => {
+      if (dto.coupons !== undefined && dto.coupons !== g.coupons) {
+        const assigned = await tx.tableSeatAssignment.count({ where: { guestId: id } });
+        if (assigned)
+          throw new ConflictException({
+            code: 'SEATING_REASSIGN_REQUIRED',
+            message: 'Remove or update the guest seating before changing the requested seat count.',
+          });
+      }
       const data = await this.guestData(tx, g.coupleId, dto, g);
       const updated = await tx.guest.update({ where: { id }, data });
       if (dto.couponNumbers !== undefined)
@@ -582,6 +620,7 @@ export class GuestsService {
     await this.get(id, user);
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
+      await tx.tableSeatAssignment.deleteMany({ where: { guestId: id } });
       await tx.coupon.updateMany({
         where: { guestId: id, status: 'ASSIGNED' },
         data: { guestId: null, status: 'AVAILABLE', assignedAt: null, releasedAt: now },

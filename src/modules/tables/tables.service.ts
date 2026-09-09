@@ -238,6 +238,21 @@ export class TablesService {
   async assign(coupleId: string, guestId: string, dto: AssignGuestTableDto, user: AuthUser) {
     if (this.seating) {
       if (dto.tableId === null) return this.seating.unassign(coupleId, guestId, user);
+      await this.couple(coupleId, user);
+      const [guest, table] = await Promise.all([
+        this.prisma.guest.findFirst({
+          where: {
+            id: guestId,
+            coupleId,
+            OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }],
+          },
+        }),
+        this.prisma.weddingTable.findFirst({ where: { id: dto.tableId, coupleId } }),
+      ]);
+      if (!guest) throw new NotFoundException('Guest not found');
+      if (!table) throw new NotFoundException('Wedding table not found for this couple');
+      if (table.side !== guest.side && !dto.allowSideOverride)
+        throw new ConflictException('Guest side does not match table side');
       return this.seating.assign(
         coupleId,
         guestId,

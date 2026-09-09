@@ -161,6 +161,15 @@ export class SeatingService {
       return await this.prisma.$transaction(async (tx) => {
         const table = await this.getTable(tx, coupleId, tableId);
         const guests = await this.getGuests(tx, coupleId, guestIds);
+        const occupied = await tx.tableSeatAssignment.findMany({
+          where: { tableId, guestId: { notIn: guestIds } },
+          select: { seatNumber: true },
+        });
+        const used = new Set(occupied.map((row) => row.seatNumber));
+        const requested = guests.reduce((sum, guest) => sum + guest.coupons, 0);
+        const remaining = TABLE_CAPACITY - used.size;
+        if (requested > remaining)
+          this.error(remaining === 0 ? 'TABLE_FULL' : 'NOT_ENOUGH_SEATS', 'Not enough seats');
         let assignments: Assignment[];
         if (manual) {
           assignments = manual.map((item) => ({ guestId: item.guestId, seats: item.seatNumbers }));
@@ -180,17 +189,9 @@ export class SeatingService {
               );
           }
         } else {
-          const occupied = await tx.tableSeatAssignment.findMany({
-            where: { tableId, guestId: { notIn: guestIds } },
-            select: { seatNumber: true },
-          });
-          const used = new Set(occupied.map((row) => row.seatNumber));
           const free = Array.from({ length: TABLE_CAPACITY }, (_, index) => index + 1).filter(
             (seat) => !used.has(seat),
           );
-          const requested = guests.reduce((sum, guest) => sum + guest.coupons, 0);
-          if (requested > free.length)
-            this.error(free.length === 0 ? 'TABLE_FULL' : 'NOT_ENOUGH_SEATS', 'Not enough seats');
           let cursor = 0;
           assignments = guestIds.map((guestId) => {
             const guest = guests.find((row) => row.id === guestId)!;

@@ -14,7 +14,6 @@ import {
   Max,
   Min,
   ValidateNested,
-  ValidateIf,
 } from 'class-validator';
 export class CreateGuestDto {
   @IsString() firstName!: string;
@@ -35,15 +34,6 @@ export class CreateGuestDto {
   @IsOptional() @IsBoolean() plusOne?: boolean;
   @IsOptional() @IsString() plusOneName?: string;
   @IsOptional() @IsBoolean() isChild?: boolean;
-  @IsOptional() @ValidateIf((_o, value) => value !== null) @IsString() tableId?: string | null;
-  /** @deprecated Use tableId. Retained for existing clients. */
-  @IsOptional()
-  @ValidateIf((_o, value) => value !== null)
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  tableNumber?: number | null;
-  @IsOptional() @IsArray() @IsString({ each: true }) assignedSeats?: string[];
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsEmail() email?: string;
   @IsOptional() @IsBoolean() lodgingNeeded?: boolean;
@@ -68,15 +58,6 @@ export class UpdateGuestDto {
   @IsOptional() @IsBoolean() plusOne?: boolean;
   @IsOptional() @IsString() plusOneName?: string;
   @IsOptional() @IsBoolean() isChild?: boolean;
-  @IsOptional() @ValidateIf((_o, value) => value !== null) @IsString() tableId?: string | null;
-  /** @deprecated Use tableId. */
-  @IsOptional()
-  @ValidateIf((_o, value) => value !== null)
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  tableNumber?: number | null;
-  @IsOptional() @IsArray() @IsString({ each: true }) assignedSeats?: string[];
   @IsOptional() @IsString() notes?: string;
   @IsOptional() @IsString() phone?: string;
   @IsOptional() @IsEmail() email?: string;

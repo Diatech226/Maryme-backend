@@ -234,89 +234,84 @@ describe('GuestsService invitation delivery', () => {
   });
 });
 
-describe('GuestsService atomic table updates', () => {
+describe('GuestsService modern seating integrity', () => {
   const user = { sub: 'user-1', role: UserRole.COUPLE, coupleId: 'couple-1' };
 
-  function harness() {
+  function harness(seatCount = 0) {
     const guest = {
-      id: 'guest-1',
-      coupleId: 'couple-1',
-      firstName: 'Fatou',
-      side: 'BRIDE',
-      coupons: 3,
-      tableId: null as string | null,
-      tableNumber: null as string | null,
+      id: 'guest-1', coupleId: 'couple-1', firstName: 'Fatou', side: 'BRIDE',
+      coupons: 3, tableId: 'legacy-table', tableNumber: '18', assignedSeats: ['legacy'],
+      couponNumbers: [], deletedAt: null,
     };
-    const tables = [
-      { id: 'bride-table', coupleId: 'couple-1', number: 18, side: 'BRIDE', capacity: 10 },
-      { id: 'groom-table', coupleId: 'couple-1', number: 19, side: 'GROOM', capacity: 10 },
-    ];
     const tx = {
-      weddingTable: {
-        findFirst: jest.fn(({ where }) => {
-          const table = tables.find(
-            (candidate) =>
-              candidate.coupleId === where.coupleId &&
-              (where.id ? candidate.id === where.id : candidate.number === where.number),
-          );
-          return table ? { ...table, guests: [] } : null;
-        }),
-        findUnique: jest.fn(({ where }) => tables.find((table) => table.id === where.id)),
+      weddingTable: { findUnique: jest.fn() },
+      tableSeatAssignment: {
+        count: jest.fn().mockResolvedValue(seatCount),
+        deleteMany: jest.fn().mockResolvedValue({ count: seatCount }),
       },
+      coupon: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+      invitation: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
       guest: {
         update: jest.fn(({ data }) => Object.assign(guest, data)),
+        findUniqueOrThrow: jest.fn(() => ({ ...guest, couponNumbers: [] })),
       },
     };
     const prisma = {
       couple: { findFirst: jest.fn().mockResolvedValue({ id: 'couple-1', guestQuota: 100 }) },
       guest: {
-        findFirst: jest.fn().mockImplementation(() => ({ ...guest })),
+        findFirst: jest.fn(() => ({ ...guest })),
         aggregate: jest.fn().mockResolvedValue({ _sum: { coupons: 3 } }),
       },
       $transaction: jest.fn((callback) => callback(tx)),
     };
-    const service = new GuestsService(
-      prisma as never,
-      { record: jest.fn() } as never,
-      { syncCount: jest.fn() } as never,
-    );
-    return { service, guest, tx };
+    const couponPool = { syncCount: jest.fn(), assignNumbers: jest.fn() };
+    return {
+      service: new GuestsService(prisma as never, { record: jest.fn() } as never, couponPool as never),
+      guest, tx, couponPool,
+    };
   }
 
-  it('assigns, changes side with a compatible table, and unassigns in coherent updates', async () => {
-    const { service, guest, tx } = harness();
-    await service.update('guest-1', { tableId: 'bride-table' }, user);
-    expect(guest).toMatchObject({ tableId: 'bride-table', tableNumber: '18' });
-
-    await service.update('guest-1', { side: 'GROOM' as never, tableId: 'groom-table' }, user);
-    expect(guest).toMatchObject({ side: 'GROOM', tableId: 'groom-table', tableNumber: '19' });
-
-    await service.update('guest-1', { tableId: null }, user);
-    expect(guest).toMatchObject({ tableId: null, tableNumber: null });
-    expect(tx.guest.update).toHaveBeenCalledTimes(3);
-  });
-
-  it('automatically unassigns when side changes without a replacement table', async () => {
+  it('allows changing coupons for an unseated guest', async () => {
     const { service, guest } = harness();
-    Object.assign(guest, { tableId: 'bride-table', tableNumber: '18' });
-    await service.update('guest-1', { side: 'GROOM' as never }, user);
-    expect(guest).toMatchObject({ side: 'GROOM', tableId: null, tableNumber: null });
+    await service.update('guest-1', { coupons: 4 }, user);
+    expect(guest.coupons).toBe(4);
   });
 
-  it('does not persist any guest fields when the requested table is full', async () => {
-    const { service, guest, tx } = harness();
-    (tx.weddingTable.findFirst as jest.Mock).mockResolvedValueOnce({
-      id: 'bride-table',
-      coupleId: 'couple-1',
-      number: 18,
-      side: 'BRIDE',
-      capacity: 10,
-      guests: [{ coupons: 8 }],
+  it('accepts an unchanged coupon count for a seated guest', async () => {
+    const { service, tx } = harness(3);
+    await expect(service.update('guest-1', { coupons: 3 }, user)).resolves.toBeDefined();
+    expect(tx.guest.update).toHaveBeenCalled();
+  });
+
+  it('rejects changing coupons while modern physical seats exist', async () => {
+    const { service, tx } = harness(3);
+    await expect(service.update('guest-1', { coupons: 4 }, user)).rejects.toMatchObject({
+      response: {
+        code: 'SEATING_REASSIGN_REQUIRED',
+        message: 'Remove or update the guest seating before changing the requested seat count.',
+      },
     });
-    await expect(
-      service.update('guest-1', { firstName: 'Changed', tableId: 'bride-table' }, user),
-    ).rejects.toThrow('Table capacity exceeded');
     expect(tx.guest.update).not.toHaveBeenCalled();
-    expect(guest.firstName).toBe('Fatou');
+  });
+
+  it('does not let a generic update silently modify seating compatibility fields', async () => {
+    const { service, guest } = harness();
+    await service.update(
+      'guest-1',
+      { firstName: 'Changed', tableId: 'attacker-table', tableNumber: 9, assignedSeats: ['9'] } as never,
+      user,
+    );
+    expect(guest).toMatchObject({
+      firstName: 'Changed', tableId: 'legacy-table', tableNumber: '18', assignedSeats: ['legacy'],
+    });
+  });
+
+  it('releases physical seats in the same transaction as the guest soft-delete', async () => {
+    const { service, tx } = harness(3);
+    await service.remove('guest-1', user);
+    expect(tx.tableSeatAssignment.deleteMany).toHaveBeenCalledWith({ where: { guestId: 'guest-1' } });
+    expect(tx.guest.update).toHaveBeenCalledWith({
+      where: { id: 'guest-1' }, data: { deletedAt: expect.any(Date) },
+    });
   });
 });
