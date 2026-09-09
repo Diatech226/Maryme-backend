@@ -136,8 +136,27 @@ model Couple {
   invitationDesigns    InvitationDesign[]
   invitationArtifacts  InvitationArtifact[]
   weddingTables        WeddingTable[]
+  weddingMedia         WeddingMedia[]
 
   @@index([status])
+}
+
+model WeddingMedia {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId  String   @db.ObjectId
+  couple    Couple   @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  slot      Int
+  label     String
+  objectKey String
+  mimeType  String
+  sizeBytes Int
+  width     Int?
+  height    Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([coupleId, slot])
+  @@index([coupleId])
 }
 
 model Guest {

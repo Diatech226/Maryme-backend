@@ -180,3 +180,8 @@ export class MarkInvitationsSentDto {
   @IsString({ each: true })
   guestIds!: string[];
 }
+
+export class UpdateInvitationDeliveryDto {
+  @IsBoolean()
+  sent!: boolean;
+}

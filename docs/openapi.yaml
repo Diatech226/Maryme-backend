@@ -806,6 +806,111 @@ paths:
           '200': { description: Assigned or unassigned },
           '409': { $ref: '#/components/responses/Error' },
         }
+  /couples/{coupleId}/wedding-media:
+    parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+    get:
+      summary: List shared wedding images
+      responses:
+        '200':
+          description: Media ordered by slot; GridFS object keys are never exposed
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 3
+                items: { $ref: '#/components/schemas/WeddingMedia' }
+        '403': { $ref: '#/components/responses/Error' }
+    post:
+      summary: Upload or safely replace a shared wedding image
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, slot, label]
+              properties:
+                file: { type: string, format: binary }
+                slot: { type: integer, minimum: 1, maximum: 3 }
+                label: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        '201':
+          {
+            description: Uploaded,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/WeddingMedia' } } },
+          }
+        '400':
+          {
+            description: WEDDING_MEDIA_SLOT_INVALID,
+            WEDDING_MEDIA_TOO_LARGE,
+            or WEDDING_MEDIA_UNSUPPORTED_TYPE,
+          }
+        '409': { description: WEDDING_MEDIA_LIMIT_REACHED }
+  /couples/{coupleId}/wedding-media/{mediaId}:
+    parameters:
+      - { $ref: '#/components/parameters/CoupleId' }
+      - { in: path, name: mediaId, required: true, schema: { type: string } }
+    patch:
+      summary: Change only a media slot or label
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                slot: { type: integer, minimum: 1, maximum: 3 }
+                label: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        '200':
+          {
+            description: Updated,
+            content:
+              { application/json: { schema: { $ref: '#/components/schemas/WeddingMedia' } } },
+          }
+        '404': { description: WEDDING_MEDIA_NOT_FOUND }
+        '409': { description: WEDDING_MEDIA_SLOT_OCCUPIED }
+    delete:
+      summary: Delete media metadata and its GridFS object
+      responses:
+        '204': { description: Deleted }
+        '404': { description: WEDDING_MEDIA_NOT_FOUND }
+  /couples/{coupleId}/wedding-media/{mediaId}/file:
+    parameters:
+      - { $ref: '#/components/parameters/CoupleId' }
+      - { in: path, name: mediaId, required: true, schema: { type: string } }
+    get:
+      summary: Download a private shared wedding image from GridFS
+      responses:
+        '200':
+          description: Image bytes
+          headers:
+            Cache-Control: { schema: { type: string, example: 'private, max-age=300' } }
+            Content-Length: { schema: { type: integer } }
+          content:
+            image/jpeg: { schema: { type: string, format: binary } }
+            image/png: { schema: { type: string, format: binary } }
+            image/webp: { schema: { type: string, format: binary } }
+        '404': { description: WEDDING_MEDIA_NOT_FOUND }
+        '500': { description: STORAGE_READ_FAILED }
+  /guests/{guestId}/invitation-delivery:
+    patch:
+      summary: Mark a simple invitation as sent or reset its delivery date
+      parameters: [{ in: path, name: guestId, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sent]
+              additionalProperties: false
+              properties: { sent: { type: boolean } }
+      responses:
+        '200': { description: Existing Guest.invitationSentDate updated }
+        '404': { $ref: '#/components/responses/Error' }
 components:
   securitySchemes:
     bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -822,6 +927,20 @@ components:
         content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' } } },
       }
   schemas:
+    WeddingMedia:
+      type: object
+      required: [id, slot, label, mimeType, sizeBytes, hasFile]
+      properties:
+        id: { type: string }
+        slot: { type: integer, minimum: 1, maximum: 3 }
+        label: { type: string }
+        mimeType: { type: string, enum: [image/jpeg, image/png, image/webp] }
+        sizeBytes: { type: integer, minimum: 1 }
+        width: { type: integer, nullable: true }
+        height: { type: integer, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        hasFile: { type: boolean, enum: [true] }
     WeddingTableInput:
       type: object
       required: [number, side]

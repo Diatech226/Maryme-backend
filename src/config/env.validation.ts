@@ -61,6 +61,10 @@ export const envValidationSchema = Joi.object({
     .integer()
     .positive()
     .default(10 * 1024 * 1024),
+  WEDDING_MEDIA_MAX_UPLOAD_BYTES: Joi.number()
+    .integer()
+    .positive()
+    .default(5 * 1024 * 1024),
   PUBLIC_API_URL: Joi.string().uri().optional(),
   SHARE_LINK_MAX_DAYS: Joi.number().integer().positive().default(30),
   SUPER_ADMIN_EMAIL: Joi.string()

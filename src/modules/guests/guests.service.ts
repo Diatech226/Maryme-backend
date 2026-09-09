@@ -503,6 +503,19 @@ export class GuestsService {
     }
     return { guestId: id, invitationSentDate };
   }
+  async updateInvitationDelivery(id: string, sent: boolean, user: AuthUser) {
+    const guest = await this.get(id, user);
+    const invitationSentDate = sent ? (guest.invitationSentDate ?? new Date()) : null;
+    await this.prisma.guest.update({ where: { id }, data: { invitationSentDate } });
+    this.audit.record({
+      userId: user.sub,
+      action: sent ? 'INVITATION_SENT' : 'INVITATION_DELIVERY_RESET',
+      entityType: 'Guest',
+      entityId: id,
+      metadata: { coupleId: guest.coupleId },
+    });
+    return { guestId: id, invitationSentDate };
+  }
   async markInvitationsSent(coupleId: string, dto: MarkInvitationsSentDto, user: AuthUser) {
     await this.couple(coupleId, user);
     const guests = await this.prisma.guest.findMany({

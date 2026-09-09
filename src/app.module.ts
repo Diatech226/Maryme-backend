@@ -20,6 +20,7 @@ import { StorageModule } from './modules/storage/storage.module';
 import { InvitationDesignsModule } from './modules/invitation-designs/invitation-designs.module';
 import { InvitationArtifactsModule } from './modules/invitation-artifacts/invitation-artifacts.module';
 import { TablesModule } from './modules/tables/tables.module';
+import { WeddingMediaModule } from './modules/wedding-media/wedding-media.module';
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -39,6 +40,7 @@ import { TablesModule } from './modules/tables/tables.module';
     InvitationDesignsModule,
     InvitationArtifactsModule,
     TablesModule,
+    WeddingMediaModule,
     CheckInsModule,
     CouponsModule,
     HealthModule,
