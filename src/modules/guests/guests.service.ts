@@ -53,8 +53,13 @@ export class GuestsService {
     },
     allowLegacySeating = false,
   ): Promise<Prisma.GuestUncheckedCreateInput | Prisma.GuestUncheckedUpdateInput> {
-    const { tableNumber, tableId, couponNumbers: _couponNumbers, ...fields } =
-      dto as ImportGuestRowDto;
+    const {
+      tableNumber,
+      tableId,
+      assignedSeats: _assignedSeats,
+      couponNumbers: _couponNumbers,
+      ...fields
+    } = dto as ImportGuestRowDto & { assignedSeats?: string[] };
     if (!allowLegacySeating) return fields as Prisma.GuestUncheckedUpdateInput;
     if (tableId === undefined && tableNumber === undefined) {
       if (dto.side !== undefined && current?.tableId) {
