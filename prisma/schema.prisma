@@ -95,7 +95,7 @@ model User {
 }
 
 model Couple {
-  id                   String               @id @default(auto()) @map("_id") @db.ObjectId
+  id                   String                @id @default(auto()) @map("_id") @db.ObjectId
   partner1             String
   partner2             String
   partner1FullName     String?
@@ -104,9 +104,9 @@ model Couple {
   location             String
   email                String
   phone                String
-  status               CoupleStatus         @default(PENDING)
+  status               CoupleStatus          @default(PENDING)
   guestQuota           Int
-  requestDate          DateTime             @default(now())
+  requestDate          DateTime              @default(now())
   authorizedAt         DateTime?
   notes                String?
   budgetEstimate       Int?
@@ -117,15 +117,15 @@ model Couple {
   churchTime           String?
   cityHallVenue        String?
   cityHallTime         String?
-  groomFamilies        String[]             @default([])
-  brideFamilies        String[]             @default([])
+  groomFamilies        String[]              @default([])
+  brideFamilies        String[]              @default([])
   users                User[]
   guests               Guest[]
   invitations          Invitation[]
   checkIns             CheckIn[]
   coupons              Coupon[]
-  createdAt            DateTime             @default(now())
-  updatedAt            DateTime             @updatedAt
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
   deletedAt            DateTime?
   accessOpensAt        DateTime?
   accessClosesAt       DateTime?
@@ -136,6 +136,7 @@ model Couple {
   invitationDesigns    InvitationDesign[]
   invitationArtifacts  InvitationArtifact[]
   weddingTables        WeddingTable[]
+  tableSeatAssignments TableSeatAssignment[]
   weddingMedia         WeddingMedia[]
 
   @@index([status])
@@ -160,37 +161,38 @@ model WeddingMedia {
 }
 
 model Guest {
-  id                  String               @id @default(auto()) @map("_id") @db.ObjectId
-  coupleId            String               @db.ObjectId
-  couple              Couple               @relation(fields: [coupleId], references: [id], onDelete: NoAction)
-  firstName           String
-  lastName            String
-  side                GuestSide
-  family              String?
-  coupons             Int                  @default(1)
-  category            GuestCategory
-  rsvpStatus          RsvpStatus           @default(PENDING)
-  dietary             DietaryRequirement   @default(STANDARD)
-  plusOne             Boolean              @default(false)
-  plusOneName         String?
-  isChild             Boolean              @default(false)
-  tableNumber         String?
-  tableId             String?              @db.ObjectId
-  table               WeddingTable?        @relation(fields: [tableId], references: [id], onDelete: NoAction)
-  assignedSeats       String[]             @default([])
-  phone               String?
-  email               String?
-  lodgingNeeded       Boolean              @default(false)
-  notes               String?
-  externalRef         String?
-  invitationSentDate  DateTime?
-  invitations         Invitation[]
-  checkIn             CheckIn?
-  couponNumbers       Coupon[]
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  deletedAt           DateTime?
-  invitationArtifacts InvitationArtifact[]
+  id                   String                @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId             String                @db.ObjectId
+  couple               Couple                @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  firstName            String
+  lastName             String
+  side                 GuestSide
+  family               String?
+  coupons              Int                   @default(1)
+  category             GuestCategory
+  rsvpStatus           RsvpStatus            @default(PENDING)
+  dietary              DietaryRequirement    @default(STANDARD)
+  plusOne              Boolean               @default(false)
+  plusOneName          String?
+  isChild              Boolean               @default(false)
+  tableNumber          String?
+  tableId              String?               @db.ObjectId
+  table                WeddingTable?         @relation(fields: [tableId], references: [id], onDelete: NoAction)
+  assignedSeats        String[]              @default([])
+  phone                String?
+  email                String?
+  lodgingNeeded        Boolean               @default(false)
+  notes                String?
+  externalRef          String?
+  invitationSentDate   DateTime?
+  invitations          Invitation[]
+  checkIn              CheckIn?
+  couponNumbers        Coupon[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  deletedAt            DateTime?
+  invitationArtifacts  InvitationArtifact[]
+  tableSeatAssignments TableSeatAssignment[]
 
   @@index([coupleId])
   @@index([rsvpStatus])
@@ -200,19 +202,39 @@ model Guest {
 }
 
 model WeddingTable {
-  id        String    @id @default(auto()) @map("_id") @db.ObjectId
-  coupleId  String    @db.ObjectId
-  couple    Couple    @relation(fields: [coupleId], references: [id], onDelete: NoAction)
-  number    Int
-  side      GuestSide
-  capacity  Int?
-  guests    Guest[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id              String                @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId        String                @db.ObjectId
+  couple          Couple                @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  number          Int
+  side            GuestSide
+  capacity        Int?
+  guests          Guest[]
+  seatAssignments TableSeatAssignment[]
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
 
   @@unique([coupleId, number])
   @@index([coupleId])
   @@index([coupleId, side])
+}
+
+/// Physical seating is deliberately independent from legacy Coupon records.
+/// Guest.assignedSeats mirrors these rows for API compatibility; the unique
+/// table/seat key is the concurrency-safe source of truth.
+model TableSeatAssignment {
+  id         String       @id @default(auto()) @map("_id") @db.ObjectId
+  coupleId   String       @db.ObjectId
+  couple     Couple       @relation(fields: [coupleId], references: [id], onDelete: NoAction)
+  tableId    String       @db.ObjectId
+  table      WeddingTable @relation(fields: [tableId], references: [id], onDelete: NoAction)
+  guestId    String       @db.ObjectId
+  guest      Guest        @relation(fields: [guestId], references: [id], onDelete: NoAction)
+  seatNumber Int
+  createdAt  DateTime     @default(now())
+
+  @@unique([tableId, seatNumber])
+  @@index([guestId])
+  @@index([coupleId])
 }
 
 model Coupon {

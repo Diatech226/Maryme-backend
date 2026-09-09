@@ -676,6 +676,86 @@ paths:
           },
         ]
       responses: { '201': { description: id and revokedAt } }
+  /couples/{coupleId}/seating/initialize:
+    parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+    post:
+      summary: Idempotently create missing tables 1 through 40
+      description: Existing tables, guests, and seat assignments are never removed or overwritten. Every newly created table has capacity 10.
+      responses: { '200': { description: Current seating availability } }
+  /couples/{coupleId}/seating/availability:
+    parameters: [{ $ref: '#/components/parameters/CoupleId' }]
+    get:
+      summary: List real physical seat availability, sorted by table and seat
+      responses:
+        {
+          '200':
+            {
+              description: Tables with occupiedSeats,
+              availableSeats,
+              occupiedCount,
+              and remainingSeats,
+            },
+        }
+  /couples/{coupleId}/guests/{guestId}/seating:
+    parameters:
+      - { $ref: '#/components/parameters/CoupleId' }
+      - { in: path, name: guestId, required: true, schema: { type: string } }
+    put:
+      summary: Assign or atomically move a guest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - {
+                    type: object,
+                    required: [tableId, seatNumbers],
+                    properties:
+                      {
+                        tableId: { type: string },
+                        seatNumbers:
+                          { type: array, items: { type: integer, minimum: 1, maximum: 10 } },
+                      },
+                  }
+                - {
+                    type: object,
+                    required: [tableId, autoAssign],
+                    properties:
+                      { tableId: { type: string }, autoAssign: { type: boolean, enum: [true] } },
+                  }
+            examples:
+              manual: { value: { tableId: 66d8f84fb06a707fa0e90411, seatNumbers: [1, 2, 3] } }
+              automatic: { value: { tableId: 66d8f84fb06a707fa0e90411, autoAssign: true } }
+      responses: { '200': { description: Guest with tableNumber and assignedSeats } }
+    delete:
+      summary: Release all physical seats assigned to a guest
+      responses: { '200': { description: Guest with null table fields and empty assignedSeats } }
+  /couples/{coupleId}/tables/{tableId}/seating/bulk:
+    parameters:
+      - { $ref: '#/components/parameters/CoupleId' }
+      - { in: path, name: tableId, required: true, schema: { type: string } }
+    post:
+      summary: Atomically seat up to 10 guests at one table
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+            examples:
+              automatic: { value: { guestIds: [guest1, guest2, guest3], autoAssign: true } }
+              manual:
+                {
+                  value:
+                    {
+                      assignments:
+                        [
+                          { guestId: guest1, seatNumbers: [1, 2] },
+                          { guestId: guest2, seatNumbers: [3] },
+                        ],
+                    },
+                }
+      responses: { '201': { description: All assignments applied atomically } }
   /couples/{coupleId}/tables:
     parameters: [{ $ref: '#/components/parameters/CoupleId' }]
     get:

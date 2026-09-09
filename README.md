@@ -1,5 +1,13 @@
 # Maryme Backend
 
+## Physical seating
+
+The seating API has one deliberately simple invariant: **40 tables × 10 physical seats**.
+`Guest.coupons` is the requested number of seats, while `Guest.assignedSeats` contains the
+physical seat numbers mirrored from concurrency-safe seat assignments. `couponNumbers` and
+the `Coupon`/`CouponPool` workflow are the legacy business entitlement system; they remain
+supported but are never used as table seat identifiers.
+
 API REST Maryme en NestJS, Prisma 6 et MongoDB. Les routes métier restent sous
 `/api/v1`, Swagger sous `/api/docs`, et le serveur écoute sur le port `4000`.
 
@@ -75,10 +83,10 @@ chaînes, sans modifier le contrat REST.
 
 ## SUPER_ADMIN et seed
 
-Le seed ne crée jamais de SUPER_ADMIN. Celui-ci est créé ou synchronisé
+Le seed ne crée jamais de SUPER*ADMIN. Celui-ci est créé ou synchronisé
 explicitement avec `npm run admin:bootstrap:dev` (sources) ou
 `npm run admin:bootstrap` (après build), à partir des cinq variables
-`SUPER_ADMIN_*`. La rotation conserve normalisation email/téléphone E.164,
+`SUPER_ADMIN*\*`. La rotation conserve normalisation email/téléphone E.164,
 hash Argon2, transaction atomique et révocation des refresh sessions actives.
 
 ## Tests
