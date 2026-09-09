@@ -3,11 +3,13 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { GuestSide, Prisma } from '@prisma/client';
 import { AuthUser } from '../../common/types/auth-user';
 import { assertCoupleAccess } from '../../common/utils/ownership';
 import { PrismaService } from '../../prisma/prisma.service';
+import { SeatingService } from '../guests/seating.service';
 import {
   AssignGuestTableDto,
   BulkWeddingTablesDto,
@@ -19,7 +21,10 @@ import {
 
 @Injectable()
 export class TablesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly seating?: SeatingService,
+  ) {}
   private async couple(coupleId: string, user: AuthUser) {
     assertCoupleAccess(user, coupleId);
     const couple = await this.prisma.couple.findFirst({
@@ -231,6 +236,15 @@ export class TablesService {
     await this.prisma.weddingTable.delete({ where: { id: tableId } });
   }
   async assign(coupleId: string, guestId: string, dto: AssignGuestTableDto, user: AuthUser) {
+    if (this.seating) {
+      if (dto.tableId === null) return this.seating.unassign(coupleId, guestId, user);
+      return this.seating.assign(
+        coupleId,
+        guestId,
+        { tableId: dto.tableId, autoAssign: true },
+        user,
+      );
+    }
     await this.couple(coupleId, user);
     const guest = await this.prisma.guest.findFirst({
       where: { id: guestId, coupleId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
