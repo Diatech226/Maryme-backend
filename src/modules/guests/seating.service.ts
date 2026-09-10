@@ -4,14 +4,19 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { GuestSide, Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { AuthUser } from '../../common/types/auth-user';
 import { assertCoupleAccess } from '../../common/utils/ownership';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AssignSeatingDto, BulkSeatingDto } from './dto/seating.dto';
+import {
+  ensureStandardWeddingTables,
+  STANDARD_TABLE_CAPACITY,
+  STANDARD_TABLE_COUNT,
+} from '../tables/standard-wedding-tables';
 
-export const TABLE_COUNT = 40;
-export const TABLE_CAPACITY = 10;
+export const TABLE_COUNT = STANDARD_TABLE_COUNT;
+export const TABLE_CAPACITY = STANDARD_TABLE_CAPACITY;
 
 type Tx = Prisma.TransactionClient;
 type Assignment = { guestId: string; seats: number[] };
@@ -53,23 +58,7 @@ export class SeatingService {
 
   async initialize(coupleId: string, user: AuthUser) {
     await this.authorize(coupleId, user);
-    await this.prisma.$transaction(
-      Array.from({ length: TABLE_COUNT }, (_, index) => {
-        const number = index + 1;
-        return this.prisma.weddingTable.upsert({
-          where: { coupleId_number: { coupleId, number } },
-          create: {
-            coupleId,
-            number,
-            capacity: TABLE_CAPACITY,
-            // `side` is required legacy metadata. Modern seating deliberately does
-            // not use it as an eligibility rule: every guest may use every table.
-            side: number % 2 ? GuestSide.GROOM : GuestSide.BRIDE,
-          },
-          update: {},
-        });
-      }),
-    );
+    await this.prisma.$transaction(async (tx) => ensureStandardWeddingTables(coupleId, tx));
     return this.availability(coupleId, user);
   }
 

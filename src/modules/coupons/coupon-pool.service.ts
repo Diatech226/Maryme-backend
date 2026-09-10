@@ -71,11 +71,17 @@ export class CouponPoolService {
   }
   async syncCount(guestId: string, desired: number, db: Db = this.prisma) {
     const current = await db.coupon.findMany({ where: { guestId }, orderBy: { number: 'asc' } });
-    if (current.some((c) => c.status === CouponStatus.USED) && current.length !== desired)
-      throw new ConflictException({
-        code: 'COUPON_ALREADY_USED',
-        message: "L'allocation d'un invité contrôlé est immuable.",
-      });
+    if (current.some((c) => c.status === CouponStatus.USED)) {
+      if (current.length !== desired)
+        throw new ConflictException({
+          code: 'COUPON_ALREADY_USED',
+          message: "L'allocation d'un invité contrôlé est immuable.",
+        });
+      // The complete allocation is frozen as soon as one coupon is used. In
+      // particular, USED coupons must count toward `desired`: looking only at
+      // ASSIGNED rows here would incorrectly allocate replacements for them.
+      return { assigned: [] as number[], released: [] as number[] };
+    }
     const assigned = current.filter((c) => c.status === CouponStatus.ASSIGNED);
     if (assigned.length < desired)
       return {

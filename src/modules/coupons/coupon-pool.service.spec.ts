@@ -88,16 +88,49 @@ describe('CouponPoolService numbered allocation', () => {
     );
   });
 
-  it('never changes an allocation containing a USED coupon', async () => {
+  it('treats USED coupons as part of an unchanged allocation and performs a NO-OP', async () => {
     const db = {
       coupon: {
-        findMany: jest.fn().mockResolvedValue([coupon(12, CouponStatus.USED), coupon(13)]),
+        findMany: jest
+          .fn()
+          .mockResolvedValue([
+            coupon(12, CouponStatus.USED),
+            coupon(13, CouponStatus.USED),
+            coupon(14, CouponStatus.USED),
+          ]),
+        updateMany: jest.fn(),
       },
     };
-    await expect(service({}).syncCount(guest.id, 3, db as never)).rejects.toBeInstanceOf(
+    const pool = service({});
+    jest.spyOn(pool, 'assignLowest');
+    await expect(pool.syncCount(guest.id, 3, db as never)).resolves.toEqual({
+      assigned: [],
+      released: [],
+    });
+    expect(pool.assignLowest).not.toHaveBeenCalled();
+    expect(db.coupon.updateMany).not.toHaveBeenCalled();
+    expect(db.coupon.findMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects any desired count change once an allocation contains a USED coupon', async () => {
+    const db = {
+      coupon: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([coupon(12, CouponStatus.USED), coupon(13), coupon(14)]),
+        updateMany: jest.fn(),
+      },
+    };
+    const pool = service({});
+    jest.spyOn(pool, 'assignLowest');
+    await expect(pool.syncCount(guest.id, 2, db as never)).rejects.toMatchObject({
+      response: { code: 'COUPON_ALREADY_USED' },
+    });
+    await expect(pool.syncCount(guest.id, 4, db as never)).rejects.toBeInstanceOf(
       ConflictException,
     );
-    expect(db.coupon.findMany).toHaveBeenCalledTimes(1);
+    expect(pool.assignLowest).not.toHaveBeenCalled();
+    expect(db.coupon.updateMany).not.toHaveBeenCalled();
   });
 
   it.each([
