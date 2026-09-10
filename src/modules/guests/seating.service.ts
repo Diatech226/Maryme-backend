@@ -62,6 +62,8 @@ export class SeatingService {
             coupleId,
             number,
             capacity: TABLE_CAPACITY,
+            // `side` is required legacy metadata. Modern seating deliberately does
+            // not use it as an eligibility rule: every guest may use every table.
             side: number % 2 ? GuestSide.GROOM : GuestSide.BRIDE,
           },
           update: {},

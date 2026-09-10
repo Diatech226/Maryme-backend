@@ -238,10 +238,10 @@ describe('GuestsService invitation delivery', () => {
 describe('GuestsService modern seating integrity', () => {
   const user = { sub: 'user-1', role: UserRole.COUPLE, coupleId: 'couple-1' };
 
-  function harness(seatCount = 0) {
+  function harness(seatCount = 0, coupons = 3) {
     const guest = {
       id: 'guest-1', coupleId: 'couple-1', firstName: 'Fatou', side: 'BRIDE',
-      coupons: 3, tableId: 'legacy-table', tableNumber: '18', assignedSeats: ['legacy'],
+      coupons, tableId: 'legacy-table', tableNumber: '18', assignedSeats: ['legacy'],
       couponNumbers: [], deletedAt: null,
     };
     const tx = {
@@ -261,7 +261,7 @@ describe('GuestsService modern seating integrity', () => {
       couple: { findFirst: jest.fn().mockResolvedValue({ id: 'couple-1', guestQuota: 100 }) },
       guest: {
         findFirst: jest.fn(() => ({ ...guest })),
-        aggregate: jest.fn().mockResolvedValue({ _sum: { coupons: 3 } }),
+        aggregate: jest.fn().mockResolvedValue({ _sum: { coupons } }),
       },
       $transaction: jest.fn((callback) => callback(tx)),
     };
@@ -276,6 +276,13 @@ describe('GuestsService modern seating integrity', () => {
     const { service, guest } = harness();
     await service.update('guest-1', { coupons: 4 }, user);
     expect(guest.coupons).toBe(4);
+  });
+
+  it('allows a phone-only PATCH for a historical guest with more than 10 coupons', async () => {
+    const { service, guest, couponPool } = harness(0, 15);
+    await service.update('guest-1', { phone: '+22670000000' }, user);
+    expect(guest).toMatchObject({ coupons: 15, phone: '+22670000000' });
+    expect(couponPool.syncCount).not.toHaveBeenCalled();
   });
 
   it('accepts an unchanged coupon count for a seated guest', async () => {
@@ -313,6 +320,19 @@ describe('GuestsService modern seating integrity', () => {
     expect(tx.tableSeatAssignment.deleteMany).toHaveBeenCalledWith({ where: { guestId: 'guest-1' } });
     expect(tx.guest.update).toHaveBeenCalledWith({
       where: { id: 'guest-1' }, data: { deletedAt: expect.any(Date) },
+    });
+    expect(tx.coupon.updateMany).toHaveBeenCalledWith({
+      where: { guestId: 'guest-1', status: 'ASSIGNED' },
+      data: {
+        guestId: null,
+        status: 'AVAILABLE',
+        assignedAt: null,
+        releasedAt: expect.any(Date),
+      },
+    });
+    expect(tx.invitation.updateMany).toHaveBeenCalledWith({
+      where: { guestId: 'guest-1', status: 'ACTIVE' },
+      data: { status: 'REVOKED', revokedAt: expect.any(Date) },
     });
   });
 });
