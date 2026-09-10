@@ -108,6 +108,11 @@ export class WeddingMediaService {
               objectKey,
               mimeType: file.mimetype.toLowerCase(),
               sizeBytes: file.size,
+              // Dimensions are not calculated by the current upload pipeline. A
+              // replacement must not retain dimensions that belonged to the old
+              // binary.
+              width: null,
+              height: null,
             },
           })
         : await this.prisma.weddingMedia.create({
