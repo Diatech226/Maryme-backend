@@ -20,7 +20,7 @@ export class CreateGuestDto {
   @IsString() lastName!: string;
   @IsEnum(GuestSide) side!: GuestSide;
   @IsOptional() @IsString() family?: string;
-  @IsInt() @Min(1) @Max(20) coupons!: number;
+  @IsInt() @Min(1) @Max(10) coupons!: number;
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
@@ -44,7 +44,7 @@ export class UpdateGuestDto {
   @IsOptional() @IsString() lastName?: string;
   @IsOptional() @IsEnum(GuestSide) side?: GuestSide;
   @IsOptional() @IsString() family?: string;
-  @IsOptional() @IsInt() @Min(1) @Max(20) coupons?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(10) coupons?: number;
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
@@ -83,7 +83,7 @@ export class ImportGuestRowDto {
   @IsString() lastName!: string;
   @IsEnum(GuestSide) side!: GuestSide;
   @IsOptional() @IsString() family?: string;
-  @IsOptional() @IsInt() @Min(1) @Max(20) coupons?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(10) coupons?: number;
   @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
