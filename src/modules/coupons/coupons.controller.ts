@@ -42,6 +42,6 @@ export class CouponsController {
     @Body() dto: ReconcileCouponsDto,
     @CurrentUser() user: AuthUser,
   ) {
-    return this.coupons.reconcile(id, dto.autoAssignMissing, user);
+    return this.coupons.reconcile(id, dto.auto ?? dto.autoAssignMissing ?? false, user);
   }
 }

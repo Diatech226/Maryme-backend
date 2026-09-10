@@ -61,6 +61,16 @@ describe('GuestsService coupon allocation', () => {
     expect(couponPool.assignNumbers).not.toHaveBeenCalled();
   });
 
+  it('propagates pool exhaustion so guest creation is rolled back by its transaction', async () => {
+    const { service, couponPool, tx } = harness();
+    couponPool.assignLowest.mockRejectedValue({ response: { code: 'COUPON_POOL_EXHAUSTED' } });
+    await expect(service.create('couple-1', baseGuest as never, user)).rejects.toMatchObject({
+      response: { code: 'COUPON_POOL_EXHAUSTED' },
+    });
+    expect(tx.guest.create).toHaveBeenCalledTimes(1);
+    expect(couponPool.assignLowest).toHaveBeenCalledWith('guest-1', 3, tx);
+  });
+
   it.each([
     { numbers: [12, 13, 14], label: 'an exact manual allocation' },
     { numbers: [], label: 'an explicitly empty manual allocation' },
@@ -240,9 +250,16 @@ describe('GuestsService modern seating integrity', () => {
 
   function harness(seatCount = 0, coupons = 3) {
     const guest = {
-      id: 'guest-1', coupleId: 'couple-1', firstName: 'Fatou', side: 'BRIDE',
-      coupons, tableId: 'legacy-table', tableNumber: '18', assignedSeats: ['legacy'],
-      couponNumbers: [], deletedAt: null,
+      id: 'guest-1',
+      coupleId: 'couple-1',
+      firstName: 'Fatou',
+      side: 'BRIDE',
+      coupons,
+      tableId: 'legacy-table',
+      tableNumber: '18',
+      assignedSeats: ['legacy'],
+      couponNumbers: [],
+      deletedAt: null,
     };
     const tx = {
       weddingTable: { findUnique: jest.fn() },
@@ -267,8 +284,14 @@ describe('GuestsService modern seating integrity', () => {
     };
     const couponPool = { syncCount: jest.fn(), assignNumbers: jest.fn() };
     return {
-      service: new GuestsService(prisma as never, { record: jest.fn() } as never, couponPool as never),
-      guest, tx, couponPool,
+      service: new GuestsService(
+        prisma as never,
+        { record: jest.fn() } as never,
+        couponPool as never,
+      ),
+      guest,
+      tx,
+      couponPool,
     };
   }
 
@@ -306,20 +329,31 @@ describe('GuestsService modern seating integrity', () => {
     const { service, guest } = harness();
     await service.update(
       'guest-1',
-      { firstName: 'Changed', tableId: 'attacker-table', tableNumber: 9, assignedSeats: ['9'] } as never,
+      {
+        firstName: 'Changed',
+        tableId: 'attacker-table',
+        tableNumber: 9,
+        assignedSeats: ['9'],
+      } as never,
       user,
     );
     expect(guest).toMatchObject({
-      firstName: 'Changed', tableId: 'legacy-table', tableNumber: '18', assignedSeats: ['legacy'],
+      firstName: 'Changed',
+      tableId: 'legacy-table',
+      tableNumber: '18',
+      assignedSeats: ['legacy'],
     });
   });
 
   it('releases physical seats in the same transaction as the guest soft-delete', async () => {
     const { service, tx } = harness(3);
     await service.remove('guest-1', user);
-    expect(tx.tableSeatAssignment.deleteMany).toHaveBeenCalledWith({ where: { guestId: 'guest-1' } });
+    expect(tx.tableSeatAssignment.deleteMany).toHaveBeenCalledWith({
+      where: { guestId: 'guest-1' },
+    });
     expect(tx.guest.update).toHaveBeenCalledWith({
-      where: { id: 'guest-1' }, data: { deletedAt: expect.any(Date) },
+      where: { id: 'guest-1' },
+      data: { deletedAt: expect.any(Date) },
     });
     expect(tx.coupon.updateMany).toHaveBeenCalledWith({
       where: { guestId: 'guest-1', status: 'ASSIGNED' },

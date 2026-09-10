@@ -55,10 +55,18 @@ export class CouponPoolService {
         message: 'Pas assez de coupons disponibles.',
       });
     const now = new Date();
-    await db.coupon.updateMany({
-      where: { id: { in: available.map((c) => c.id) }, status: CouponStatus.AVAILABLE },
-      data: { guestId, status: CouponStatus.ASSIGNED, assignedAt: now, releasedAt: null },
-    });
+    await db.coupon
+      .updateMany({
+        where: { id: { in: available.map((c) => c.id) }, status: CouponStatus.AVAILABLE },
+        data: { guestId, status: CouponStatus.ASSIGNED, assignedAt: now, releasedAt: null },
+      })
+      .then((result) => {
+        if (result.count !== count)
+          throw new ConflictException({
+            code: 'COUPON_ALLOCATION_CONFLICT',
+            message: "L'attribution concurrente des coupons a échoué; veuillez réessayer.",
+          });
+      });
     return available.map((c) => c.number);
   }
   async syncCount(guestId: string, desired: number, db: Db = this.prisma) {
@@ -184,30 +192,64 @@ export class CouponPoolService {
     assertCoupleAccess(user, coupleId);
     const couple = await this.prisma.couple.findUnique({ where: { id: coupleId } });
     if (!couple) throw new NotFoundException('Couple not found');
-    await this.ensurePool(coupleId, couple.guestQuota);
-    const guests = await this.prisma.guest.findMany({
-      where: { coupleId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
-      include: { couponNumbers: true },
-    });
-    const shortages = guests
-      .filter(
-        (g) => g.couponNumbers.filter((c) => c.status === CouponStatus.ASSIGNED).length < g.coupons,
-      )
-      .map((g) => ({ guestId: g.id, expected: g.coupons, actual: g.couponNumbers.length }));
-    const excess = guests
-      .filter((g) => g.couponNumbers.length > g.coupons)
-      .map((g) => ({ guestId: g.id, expected: g.coupons, actual: g.couponNumbers.length }));
-    if (auto) for (const item of shortages) await this.syncCount(item.guestId, item.expected);
-    const available = await this.prisma.coupon.count({
-      where: { coupleId, status: CouponStatus.AVAILABLE },
+    const result = await this.prisma.$transaction(async (tx) => {
+      await this.ensurePool(coupleId, couple.guestQuota, tx);
+      const load = () =>
+        tx.guest.findMany({
+          where: { coupleId, OR: [{ deletedAt: null }, { deletedAt: { isSet: false } }] },
+          include: { couponNumbers: true, checkIn: { select: { id: true } } },
+        });
+      const anomalies = (guests: Awaited<ReturnType<typeof load>>) => ({
+        shortages: guests
+          .filter((guest) => guest.couponNumbers.length < guest.coupons)
+          .map((guest) => ({
+            guestId: guest.id,
+            expected: guest.coupons,
+            actual: guest.couponNumbers.length,
+          })),
+        excess: guests
+          .filter((guest) => guest.couponNumbers.length > guest.coupons)
+          .map((guest) => ({
+            guestId: guest.id,
+            expected: guest.coupons,
+            actual: guest.couponNumbers.length,
+          })),
+      });
+      const guests = await load();
+      const detected = anomalies(guests);
+      let autoAssigned = 0;
+      if (auto) {
+        const byId = new Map(guests.map((guest) => [guest.id, guest]));
+        for (const item of [...detected.shortages, ...detected.excess]) {
+          const guest = byId.get(item.guestId)!;
+          // A check-in (or any USED coupon) freezes the complete numbered allocation.
+          if (
+            guest.checkIn ||
+            guest.couponNumbers.some((coupon) => coupon.status === CouponStatus.USED)
+          )
+            continue;
+          const change = await this.syncCount(item.guestId, item.expected, tx);
+          autoAssigned += change.assigned.length;
+        }
+      }
+      const remaining = auto ? anomalies(await load()) : detected;
+      const available = await tx.coupon.count({
+        where: { coupleId, status: CouponStatus.AVAILABLE },
+      });
+      return { ...remaining, available, autoAssigned };
     });
     this.audit.record({
       userId: user.sub,
       action: 'COUPONS_RECONCILED',
       entityType: 'Couple',
       entityId: coupleId,
-      metadata: { shortages: shortages.length, excess: excess.length, autoAssignMissing: auto },
+      metadata: {
+        shortages: result.shortages.length,
+        excess: result.excess.length,
+        autoAssignMissing: auto,
+        autoAssigned: result.autoAssigned,
+      },
     });
-    return { shortages, excess, available, autoAssigned: auto ? shortages.length : 0 };
+    return result;
   }
 }
