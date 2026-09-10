@@ -29,7 +29,11 @@ describe('WeddingMediaService', () => {
     let sequence = 0;
     const rows: any[] = [];
     const weddingMedia = {
-      findMany: jest.fn(async ({ where }) => rows.filter((row) => row.coupleId === where.coupleId)),
+      findMany: jest.fn(async ({ where }) =>
+        rows
+          .filter((row) => row.coupleId === where.coupleId)
+          .sort((left, right) => left.slot - right.slot),
+      ),
       findFirst: jest.fn(async ({ where }) =>
         rows.find((row) => row.id === where.id && row.coupleId === where.coupleId),
       ),
@@ -74,13 +78,14 @@ describe('WeddingMediaService', () => {
       get: jest.fn(async (key) => objects.get(key)),
       delete: jest.fn(async (key) => void objects.delete(key)),
     };
+    const audit = { record: jest.fn() };
     const service = new WeddingMediaService(
       prisma as never,
       storage as never,
       { get: jest.fn().mockReturnValue(20) } as never,
-      { record: jest.fn() } as never,
+      audit as never,
     );
-    return { service, rows, storage, weddingMedia, objects };
+    return { service, rows, storage, weddingMedia, objects, audit };
   }
 
   it.each([
@@ -141,6 +146,7 @@ describe('WeddingMediaService', () => {
     expect(storage.put.mock.invocationCallOrder.at(-1)).toBeLessThan(
       storage.delete.mock.invocationCallOrder.at(-1)!,
     );
+    expect(rows[0]).toMatchObject({ width: null, height: null });
     await expect(service.download('couple-a', first.id, user)).resolves.toMatchObject({
       body: files.png.buffer,
       contentType: 'image/png',
@@ -148,21 +154,98 @@ describe('WeddingMediaService', () => {
     });
   });
 
-  it('lists safe metadata without exposing objectKey', async () => {
+  it('replaces an occupied slot without treating it as a fourth card', async () => {
+    const { service, rows, weddingMedia } = harness();
+    for (const [slot, label, file] of [
+      [1, 'Main', files.jpeg],
+      [2, 'Programme', files.png],
+      [3, 'Info', files.webp],
+    ] as const)
+      await service.upload('couple-a', { slot, label }, file, user);
+
+    await expect(
+      service.upload('couple-a', { slot: 1, label: 'Replacement' }, files.png, user),
+    ).resolves.toMatchObject({ slot: 1, label: 'Replacement' });
+    expect(rows).toHaveLength(3);
+    expect(weddingMedia.count).toHaveBeenCalledTimes(3);
+  });
+
+  it('lists safe metadata sorted by slot without exposing objectKey', async () => {
     const { service } = harness();
+    await service.upload('couple-a', { slot: 3, label: 'Info' }, files.webp, user);
+    await service.upload('couple-a', { slot: 1, label: 'Main' }, files.jpeg, user);
     await service.upload('couple-a', { slot: 2, label: 'Programme' }, files.png, user);
     const result = await service.list('couple-a', user);
     expect(result[0]).not.toHaveProperty('objectKey');
-    expect(result[0]).toMatchObject({ slot: 2, hasFile: true });
+    expect(result.map(({ slot }) => slot)).toEqual([1, 2, 3]);
+    expect(result.every(({ hasFile }) => hasFile)).toBe(true);
+  });
+
+  it('renames a card and moves it to an available slot', async () => {
+    const { service } = harness();
+    const media = await service.upload('couple-a', { slot: 1, label: 'Old' }, files.jpeg, user);
+    await expect(
+      service.update('couple-a', media.id, { slot: 2, label: 'Programme' }, user),
+    ).resolves.toMatchObject({ slot: 2, label: 'Programme' });
+  });
+
+  it('rejects moving a card to an occupied slot', async () => {
+    const { service } = harness();
+    const first = await service.upload('couple-a', { slot: 1, label: 'Main' }, files.jpeg, user);
+    await service.upload('couple-a', { slot: 2, label: 'Programme' }, files.png, user);
+    await expect(service.update('couple-a', first.id, { slot: 2 }, user)).rejects.toMatchObject({
+      response: { code: 'WEDDING_MEDIA_SLOT_OCCUPIED' },
+    });
   });
 
   it('deletes both metadata and the GridFS object', async () => {
-    const { service, rows, storage } = harness();
+    const { service, rows, storage, audit } = harness();
     const media = await service.upload('couple-a', { slot: 3, label: 'Info' }, files.webp, user);
     const key = rows[0].objectKey;
     await service.remove('couple-a', media.id, user);
     expect(rows).toHaveLength(0);
     expect(storage.delete).toHaveBeenCalledWith(key);
+    expect(audit.record).toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'WEDDING_MEDIA_DELETED', entityId: media.id }),
+    );
+  });
+
+  it('restores metadata and does not audit deletion when GridFS deletion fails', async () => {
+    const { service, rows, storage, audit } = harness();
+    const media = await service.upload('couple-a', { slot: 1, label: 'Main' }, files.jpeg, user);
+    storage.delete.mockRejectedValueOnce(new Error('GridFS unavailable'));
+
+    await expect(service.remove('couple-a', media.id, user)).rejects.toThrow('GridFS unavailable');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: media.id, coupleId: 'couple-a', slot: 1 });
+    expect(audit.record).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'WEDDING_MEDIA_DELETED' }),
+    );
+  });
+
+  it('removes the new object when replacement metadata update fails', async () => {
+    const { service, rows, storage, objects, weddingMedia } = harness();
+    await service.upload('couple-a', { slot: 1, label: 'Old' }, files.jpeg, user);
+    const oldKey = rows[0].objectKey;
+    weddingMedia.update.mockRejectedValueOnce(new Error('database unavailable'));
+
+    await expect(
+      service.upload('couple-a', { slot: 1, label: 'New' }, files.png, user),
+    ).rejects.toThrow('database unavailable');
+    expect(objects.size).toBe(1);
+    expect(objects.has(oldKey)).toBe(true);
+    expect(storage.delete).not.toHaveBeenCalledWith(oldKey);
+  });
+
+  it('keeps the replacement active when old GridFS cleanup fails', async () => {
+    const { service, rows, storage } = harness();
+    const media = await service.upload('couple-a', { slot: 1, label: 'Old' }, files.jpeg, user);
+    storage.delete.mockRejectedValueOnce(new Error('old object locked'));
+
+    await expect(
+      service.upload('couple-a', { slot: 1, label: 'New' }, files.png, user),
+    ).resolves.toMatchObject({ id: media.id, label: 'New', mimeType: 'image/png' });
+    expect(rows).toHaveLength(1);
   });
 
   it('isolates couple A media from couple B', async () => {
@@ -170,5 +253,49 @@ describe('WeddingMediaService', () => {
     await expect(service.list('couple-b', user)).rejects.toMatchObject({
       response: { code: 'WRONG_WEDDING' },
     });
+  });
+
+  it('prevents couple A from uploading or replacing through couple B', async () => {
+    const { service } = harness();
+    await expect(
+      service.upload('couple-b', { slot: 1, label: 'Private' }, files.jpeg, user),
+    ).rejects.toMatchObject({ response: { code: 'WRONG_WEDDING' } });
+  });
+
+  it.each(['download', 'update', 'remove'] as const)(
+    'prevents couple A from using %s on couple B media',
+    async (operation) => {
+      const { service, rows } = harness();
+      rows.push({
+        id: 'media-b',
+        coupleId: 'couple-b',
+        slot: 1,
+        label: 'Private',
+        objectKey: 'private-key',
+        mimeType: 'image/jpeg',
+        sizeBytes: 4,
+        width: null,
+        height: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const call =
+        operation === 'download'
+          ? service.download('couple-a', 'media-b', user)
+          : operation === 'update'
+            ? service.update('couple-a', 'media-b', { label: 'Stolen' }, user)
+            : service.remove('couple-a', 'media-b', user);
+      await expect(call).rejects.toMatchObject({
+        response: { code: 'WEDDING_MEDIA_NOT_FOUND' },
+      });
+    },
+  );
+
+  it('does not touch InvitationArtifact or Guest while uploading', async () => {
+    const { service, weddingMedia } = harness();
+    await service.upload('couple-a', { slot: 1, label: 'Main' }, files.jpeg, user);
+    expect(weddingMedia.create).toHaveBeenCalledTimes(1);
+    // The deliberately narrow Prisma harness has no InvitationArtifact or Guest delegates:
+    // an accidental dependency on either domain would make this operation fail.
   });
 });
