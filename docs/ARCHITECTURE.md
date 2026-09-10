@@ -30,6 +30,14 @@ The normalized spreadsheet endpoint is `POST /couples/{coupleId}/guests/import`.
 
 Assign, move, bulk assignment, unassignment, and seated-guest deletion update assignment rows and the guest compatibility mirror in one database transaction. A seated guest's requested count must be unassigned before it can change.
 
+The canonical meanings are intentionally disjoint: `Guest.coupons` is the authorized-person count (`1..10` for modern writes), `Guest.tableNumber` is the table number, `TableSeatAssignment.seatNumber` is a physical seat (`1..10`), and `Coupon.number` is an internal access-coupon identifier. Neither coupon numbers nor legacy strings are synthesized as physical seats. An unseated guest has `tableId = null`, `tableNumber = null`, and `assignedSeats = []`; there is no default-table fallback.
+
+## Simple cards, advanced artifacts, and access QR
+
+Simple wedding-card sharing is a frontend composition over the common wedding image. Its only guest-dependent rendering variable is `tableNumber`; identity, contact data, entitlement count, seat numbers, coupon numbers, and QR tokens are not wedding-card rendering inputs. The coupon-card concept is not a delivered document: its sole value is `couponCount`, derived directly from `Guest.coupons`, and requires no invitation, table, seats, coupon-number list, QR, artifact, or share link.
+
+An `Invitation` provides an opaque access token. Generating that QR does not mutate the guest's entitlement or seating. Check-in may internally transition the guest's assigned `Coupon` records to `USED`, but their internal numbers are not card content. Explicitly marking an invitation sent is the only delivery-status action; opening a share URL or downloading a file is not proof of sending. Thus **simple wedding-card sharing, an advanced invitation artifact, and a coupon card are three separate concepts**.
+
 ## Wedding media API projection
 
-Wedding media responses intentionally expose neither `coupleId` nor the storage-only `objectKey`. Frontends must retain `coupleId` from their route context rather than expecting it in a `WeddingMedia` response.
+Wedding media responses intentionally expose neither `coupleId` nor the storage-only `objectKey`, and never attach assigned seats, coupon numbers, or QR tokens. Frontends must retain `coupleId` from their route context rather than expecting it in a `WeddingMedia` response. Slot 1 is the main wedding image used by modern simple sharing. Slots 2 and 3 remain accepted only for compatibility with existing legacy media and are not used by that modern flow; no existing media is deleted or migrated automatically.

@@ -1,5 +1,14 @@
 openapi: 3.0.3
-info: { title: Maryme API, version: 1.0.0 }
+info:
+  title: Maryme API
+  version: 1.0.0
+  description: >-
+    Guest.coupons is the authorized-person count (1..10 for modern writes).
+    Coupon.number is an internal coupon identifier, and
+    TableSeatAssignment.seatNumber is a physical seat (1..10). The simple
+    wedding card uses only tableNumber as guest-specific rendering data; a
+    coupon card uses only the entitlement count; QR is a separate opaque
+    Invitation token.
 servers: [{ url: http://localhost:4000/api/v1 }]
 security: [{ bearerAuth: [] }]
 paths:
@@ -891,6 +900,10 @@ paths:
     parameters: [{ $ref: '#/components/parameters/CoupleId' }]
     get:
       summary: List shared wedding images
+      description: >-
+        Slot 1 is the main image used by modern simple wedding-card sharing.
+        Slots 2 and 3 remain legacy-compatible and are not used by that flow.
+        Media is common to the wedding and never contains seating, coupon, or QR data.
       responses:
         '200':
           description: Media ordered by slot; GridFS object keys are never exposed
@@ -1013,7 +1026,13 @@ components:
       required: [id, slot, label, mimeType, sizeBytes, hasFile]
       properties:
         id: { type: string }
-        slot: { type: integer, minimum: 1, maximum: 3 }
+        slot:
+          {
+            type: integer,
+            minimum: 1,
+            maximum: 3,
+            description: Slot 1 is modern/main; slots 2 and 3 are legacy-compatible.,
+          }
         label: { type: string }
         mimeType: { type: string, enum: [image/jpeg, image/png, image/webp] }
         sizeBytes: { type: integer, minimum: 1 }
@@ -1265,22 +1284,40 @@ components:
                 type: string,
                 enum: [STANDARD, VEGETARIAN, VEGAN, GLUTEN_FREE, CHILD_MENU, HALAL, NO_SEAFOOD],
               },
-            coupons: { type: integer, minimum: 1, maximum: 20 },
+            coupons:
+              {
+                type: integer,
+                minimum: 1,
+                description: Authorized-person count; modern writes accept 1..10,
+                while historical values are returned unchanged. This is not a coupon number or seat number.,
+              },
             couponNumbers:
               {
                 type: array,
                 uniqueItems: true,
                 items: { type: integer, minimum: 1 },
-                description: Exact persisted numbered coupons; when supplied its length must equal coupons.,
+                description: Internal access-coupon identifiers; never physical seat numbers.,
               },
             tableId:
               {
                 type: string,
                 nullable: true,
-                description: On PATCH,
-                omit to preserve assignment,
-                null to unassign,
-                or provide an ID to validate and assign atomically.,
+                readOnly: true,
+                description: Seating projection; generic guest writes cannot set this field.,
+              },
+            tableNumber:
+              {
+                type: string,
+                nullable: true,
+                readOnly: true,
+                description: The sole guest-specific rendering variable for a simple wedding card.,
+              },
+            assignedSeats:
+              {
+                type: array,
+                readOnly: true,
+                items: { type: string, pattern: '^(10|[1-9])$' },
+                description: Compatibility mirror of physical TableSeatAssignment rows.,
               },
           },
       }
@@ -1394,7 +1431,7 @@ components:
             code:
               {
                 type: string,
-                description: "Seating codes: TABLE_FULL, NOT_ENOUGH_SEATS, SEAT_ALREADY_ASSIGNED, SEAT_COUNT_MISMATCH, SEAT_NUMBER_OUT_OF_RANGE, TABLE_NUMBER_OUT_OF_RANGE, or SEATING_REASSIGN_REQUIRED. Other API domains define additional codes.",
+                description: 'Seating codes: TABLE_FULL, NOT_ENOUGH_SEATS, SEAT_ALREADY_ASSIGNED, SEAT_COUNT_MISMATCH, SEAT_NUMBER_OUT_OF_RANGE, TABLE_NUMBER_OUT_OF_RANGE, or SEATING_REASSIGN_REQUIRED. Other API domains define additional codes.',
               },
             message: { type: string },
             details: { type: object },

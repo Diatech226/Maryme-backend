@@ -21,6 +21,7 @@ describe('SeatingService', () => {
         coupleId: 'couple',
         side: GuestSide.GROOM as GuestSide,
         coupons: count,
+        couponNumbers: [100 + index],
         tableId: null as string | null,
         tableNumber: null as string | null,
         assignedSeats: [] as string[],
@@ -61,7 +62,10 @@ describe('SeatingService', () => {
         ),
         findUnique: jest.fn(({ where }) => state.guests.find((guest) => guest.id === where.id)),
         update: jest.fn(({ where, data }) =>
-          Object.assign(state.guests.find((g) => g.id === where.id)!, data),
+          Object.assign(
+            state.guests.find((g) => g.id === where.id)!,
+            data,
+          ),
         ),
       },
       tableSeatAssignment: {
@@ -220,6 +224,7 @@ describe('SeatingService', () => {
     });
     await service.assign('couple', 'guest1', { tableId: 'table1', seatNumbers: [1, 2] }, user);
     await service.assign('couple', 'guest1', { tableId: 'table2', seatNumbers: [9, 10] }, user);
+    expect(state.guests[0]).toMatchObject({ coupons: 2, couponNumbers: [100] });
     expect(state.seats).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ tableId: 'table2', seatNumber: 9 }),
@@ -274,24 +279,27 @@ describe('SeatingService', () => {
     expect(state.guests[1].assignedSeats).toEqual(['3', '4', '5']);
   });
 
-  it.each(['automatic', 'manual'])('rejects 11 requested physical seats in %s bulk', async (mode) => {
-    const { service, state } = harness([3, 3, 3, 2]);
-    const guestIds = state.guests.map((guest) => guest.id);
-    const request =
-      mode === 'automatic'
-        ? { guestIds, autoAssign: true }
-        : {
-            assignments: guestIds.map((guestId, index) => ({
-              guestId,
-              seatNumbers: Array.from({ length: state.guests[index].coupons }, (_, seat) =>
-                Math.min(10, index * 3 + seat + 1),
-              ),
-            })),
-          };
-    await expect(service.bulk('couple', 'table1', request, user)).rejects.toMatchObject({
-      response: { code: 'NOT_ENOUGH_SEATS' },
-    });
-  });
+  it.each(['automatic', 'manual'])(
+    'rejects 11 requested physical seats in %s bulk',
+    async (mode) => {
+      const { service, state } = harness([3, 3, 3, 2]);
+      const guestIds = state.guests.map((guest) => guest.id);
+      const request =
+        mode === 'automatic'
+          ? { guestIds, autoAssign: true }
+          : {
+              assignments: guestIds.map((guestId, index) => ({
+                guestId,
+                seatNumbers: Array.from({ length: state.guests[index].coupons }, (_, seat) =>
+                  Math.min(10, index * 3 + seat + 1),
+                ),
+              })),
+            };
+      await expect(service.bulk('couple', 'table1', request, user)).rejects.toMatchObject({
+        response: { code: 'NOT_ENOUGH_SEATS' },
+      });
+    },
+  );
 
   it('supports a bulk selection of 10 contacts when total requested seats fit', async () => {
     const { service, state } = harness(Array(10).fill(1));
@@ -312,7 +320,9 @@ describe('SeatingService', () => {
       service.assign('couple', 'guest2', { tableId: 'table1', seatNumbers: [1] }, user),
     ]);
     expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
-    const rejected = results.find((result) => result.status === 'rejected') as PromiseRejectedResult;
+    const rejected = results.find(
+      (result) => result.status === 'rejected',
+    ) as PromiseRejectedResult;
     expect(rejected.reason).toMatchObject({ response: { code: 'SEAT_ALREADY_ASSIGNED' } });
     expect(state.seats.filter((seat) => seat.seatNumber === 1)).toHaveLength(1);
     const loser = state.guests.find((guest) => guest.tableId === null);

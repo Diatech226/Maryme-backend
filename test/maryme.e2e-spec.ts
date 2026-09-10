@@ -187,7 +187,9 @@ describe('Maryme lifecycle (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/api/v1/couples/${a.id}/guests/bulk`)
       .set(auth(token))
-      .send({ mode: 'append', guests: [{ ...guest, coupons: 20 }] })
+      // Every guest remains valid under the modern 1..10 contract; the aggregate
+      // entitlement (1 existing + 10 requested) is what exceeds this couple's quota.
+      .send({ mode: 'append', guests: [{ ...guest, coupons: 10 }] })
       .expect(409);
     await request(app.getHttpServer())
       .get(`/api/v1/couples/${b.id}/guests`)
@@ -411,7 +413,7 @@ describe('Maryme lifecycle (e2e)', () => {
       .get(`/api/v1/couples/${couple.id}/invitation-artifacts`)
       .set(auth(token))
       .expect(200)
-      .expect(({ body }) => expect(body.data.data[0].id).toBe(artifact.id));
+      .expect(({ body }) => expect(body.data[0].id).toBe(artifact.id));
     for (let index = 0; index < 2; index++) {
       await request(app.getHttpServer())
         .post(`/api/v1/invitations/${invitation.id}/artifact`)
@@ -427,8 +429,8 @@ describe('Maryme lifecycle (e2e)', () => {
       .set(auth(token))
       .expect(200)
       .expect(({ body }) => {
-        expect(body.data.data).toHaveLength(1);
-        expect(body.data.meta).toEqual({ page: 2, limit: 2, total: 3, totalPages: 2 });
+        expect(body.data).toHaveLength(1);
+        expect(body.meta).toEqual({ page: 2, limit: 2, total: 3, totalPages: 2 });
       });
     await request(app.getHttpServer())
       .get(`/api/v1/invitation-artifacts/${artifact.id}/download?format=image`)

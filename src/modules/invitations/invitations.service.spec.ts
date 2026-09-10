@@ -3,7 +3,14 @@ import { InvitationsService } from './invitations.service';
 
 describe('InvitationsService', () => {
   const user = { sub: 'user-1', role: UserRole.COUPLE, coupleId: 'couple-1' };
-  const guest = { id: 'guest-1', coupleId: 'couple-1' };
+  const guest = {
+    id: 'guest-1',
+    coupleId: 'couple-1',
+    coupons: 3,
+    tableId: 'table-8',
+    tableNumber: '8',
+    assignedSeats: ['1', '2', '3'],
+  };
 
   it('returns unique raw QR tokens while persisting only distinct hashes', async () => {
     const created: Array<Record<string, unknown>> = [];
@@ -35,6 +42,15 @@ describe('InvitationsService', () => {
     expect(created[0].tokenHash).not.toBe(created[1].tokenHash);
     expect(first).not.toHaveProperty('tokenHash');
     expect(second).not.toHaveProperty('tokenHash');
+    expect(guest).toMatchObject({
+      coupons: 3,
+      tableId: 'table-8',
+      tableNumber: '8',
+      assignedSeats: ['1', '2', '3'],
+    });
+    expect(tx).not.toHaveProperty('guest');
+    expect(tx).not.toHaveProperty('tableSeatAssignment');
+    expect(tx).not.toHaveProperty('coupon');
   });
 
   it('revokes prior active invitations in the same transaction when requested', async () => {
