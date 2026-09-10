@@ -12,6 +12,7 @@ import { normalizePhoneNumber } from '../../common/utils/phone';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CouponPoolService } from '../coupons/coupon-pool.service';
+import { ensureStandardWeddingTables } from '../tables/standard-wedding-tables';
 import {
   CoupleQueryDto,
   CreateCoupleDto,
@@ -111,6 +112,7 @@ export class CouplesService {
           data: { email, phone, passwordHash, role: UserRole.COUPLE, coupleId: created.id },
         });
         await this.coupons.ensurePool(created.id, created.guestQuota, tx);
+        await ensureStandardWeddingTables(created.id, tx);
         return created;
       });
       void this.audit.record({

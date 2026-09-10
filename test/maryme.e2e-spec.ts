@@ -53,6 +53,15 @@ describe('Maryme lifecycle (e2e)', () => {
       phone: '+22670000002',
       coupleId: id,
     });
+    const standardTables = await prisma.weddingTable.findMany({
+      where: { coupleId: id },
+      orderBy: { number: 'asc' },
+    });
+    expect(standardTables).toHaveLength(40);
+    expect(standardTables.map((table) => table.number)).toEqual(
+      Array.from({ length: 40 }, (_, index) => index + 1),
+    );
+    expect(standardTables.every((table) => table.capacity === 10)).toBe(true);
     await request(app.getHttpServer())
       .get(`/api/v1/couples/${id}`)
       .set(auth(admin))
