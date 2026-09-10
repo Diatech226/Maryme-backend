@@ -80,11 +80,18 @@ describe('ACCESS_AGENT access control (e2e)', () => {
           side: 'BRIDE',
           coupons: 2,
           category: 'VIP',
-          tableNumber: 'VIP-1',
-          assignedSeats: ['A1', 'A2'],
         })
         .expect(201)
     ).body.data;
+    const seating = await request(app.getHttpServer())
+      .post(`/api/v1/couples/${coupleA}/seating/initialize`)
+      .set(auth(adminToken))
+      .expect(200);
+    await request(app.getHttpServer())
+      .put(`/api/v1/couples/${coupleA}/guests/${guestA.id}/seating`)
+      .set(auth(adminToken))
+      .send({ tableId: seating.body.data.tables[0].id, seatNumbers: [1, 2] })
+      .expect(200);
     const guestB = (
       await request(app.getHttpServer())
         .post(`/api/v1/couples/${coupleB}/guests`)

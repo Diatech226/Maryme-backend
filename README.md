@@ -1,12 +1,30 @@
 # Maryme Backend
 
-## Physical seating
+## Contrats carte, coupons, placement et QR
 
-The seating API has one deliberately simple invariant: **40 tables × 10 physical seats**.
-`Guest.coupons` is the requested number of seats, while `Guest.assignedSeats` contains the
-physical seat numbers mirrored from concurrency-safe seat assignments. `couponNumbers` and
-the `Coupon`/`CouponPool` workflow are the legacy business entitlement system; they remain
-supported but are never used as table seat identifiers.
+Ces valeurs sont des concepts distincts et ne doivent jamais être substituées les unes aux autres :
+
+- `Guest.coupons` est le **nombre de personnes autorisées** (`1..10` pour toute écriture
+  moderne). Il détermine aussi le nombre exact de sièges que doit réserver un placement moderne.
+- `Guest.tableNumber` est uniquement le numéro de table projeté pour l'API.
+- `TableSeatAssignment.seatNumber` est un siège physique entier `1..10`, attaché à une table.
+- `Coupon.number` est l'identifiant interne d'un droit d'accès ; ce n'est jamais un numéro de siège.
+
+La carte de mariage simple est rendue par le frontend à partir de l'image commune et sa seule
+variable propre au Guest est `tableNumber`. La « carte coupon » n'est pas un fichier à envoyer :
+sa seule donnée est `{ "couponCount": Guest.coupons }`, déjà disponible sans créer
+d'`Invitation`. Un QR est le token opaque séparé d'une `Invitation`, utilisé pour le contrôle
+d'accès et le check-in. En particulier : **partage simple de carte de mariage ≠ artefact
+d'invitation avancé ≠ carte coupon**.
+
+L'API Seating conserve l'invariant **40 tables × 10 sièges physiques**. Sans placement, les
+valeurs sont `tableId: null`, `tableNumber: null` et `assignedSeats: []` ; aucun fallback vers une
+table fictive n'est appliqué. `Guest.assignedSeats` n'est qu'un miroir de compatibilité des lignes
+transactionnelles `TableSeatAssignment`.
+
+Wedding Media conserve les slots existants sans migration destructive : le **slot 1** est l'image
+principale utilisée par le partage moderne ; les **slots 2 et 3** sont legacy et ne sont pas
+utilisés par ce flux. Une réponse Wedding Media ne contient jamais sièges, coupons ou token QR.
 
 API REST Maryme en NestJS, Prisma 6 et MongoDB. Les routes métier restent sous
 `/api/v1`, Swagger sous `/api/docs`, et le serveur écoute sur `0.0.0.0` avec le
