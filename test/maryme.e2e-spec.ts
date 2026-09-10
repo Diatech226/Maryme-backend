@@ -72,14 +72,41 @@ describe('Maryme lifecycle (e2e)', () => {
         .post(`/api/v1/couples/${id}/guests`)
         .set(auth(token))
         .send({
-          firstName: 'Lea',
-          lastName: 'Martin',
+          firstName: 'Awa',
+          lastName: 'Diallo',
           side: 'BRIDE',
-          coupons: 1,
+          coupons: 3,
           category: 'FRIENDS',
         })
         .expect(201)
     ).body.data;
+    expect(guest.couponNumbers).toHaveLength(3);
+    expect(new Set(guest.couponNumbers).size).toBe(3);
+    const originalCouponNumbers = guest.couponNumbers;
+    await request(app.getHttpServer())
+      .get(`/api/v1/guests/${guest.id}`)
+      .set(auth(token))
+      .expect(200)
+      .expect(({ body }) => expect(body.data.couponNumbers).toEqual(originalCouponNumbers));
+    const seating = (
+      await request(app.getHttpServer())
+        .post(`/api/v1/couples/${id}/seating/initialize`)
+        .set(auth(token))
+        .expect(200)
+    ).body.data;
+    for (const tableNumber of [8, 12]) {
+      const table = seating.tables.find((item: { number: number }) => item.number === tableNumber);
+      await request(app.getHttpServer())
+        .put(`/api/v1/couples/${id}/guests/${guest.id}/seating`)
+        .set(auth(token))
+        .send({ tableId: table.id, autoAssign: true })
+        .expect(200);
+      await request(app.getHttpServer())
+        .get(`/api/v1/guests/${guest.id}`)
+        .set(auth(token))
+        .expect(200)
+        .expect(({ body }) => expect(body.data.couponNumbers).toEqual(originalCouponNumbers));
+    }
     const firstInvitation = (
       await request(app.getHttpServer())
         .post(`/api/v1/guests/${guest.id}/invitations`)
@@ -120,6 +147,13 @@ describe('Maryme lifecycle (e2e)', () => {
         .send({ token: invitation.token }),
     ]);
     expect(results.map((r) => r.status).sort()).toEqual([201, 409]);
+    expect(
+      await prisma.coupon.findMany({
+        where: { guestId: guest.id },
+        orderBy: { number: 'asc' },
+        select: { number: true, status: true },
+      }),
+    ).toEqual(originalCouponNumbers.map((number: number) => ({ number, status: 'USED' })));
     const checkedIn = await request(app.getHttpServer())
       .get(`/api/v1/couples/${id}/guests?checkedIn=true`)
       .set(auth(token))

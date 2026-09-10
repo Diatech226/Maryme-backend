@@ -21,7 +21,10 @@ export class AssignCouponsDto {
   couponNumbers!: number[];
 }
 export class ReconcileCouponsDto {
-  @IsOptional() @IsBoolean() autoAssignMissing = false;
+  @IsOptional() @IsBoolean() auto?: boolean;
+
+  /** @deprecated Kept for clients using the original request contract. */
+  @IsOptional() @IsBoolean() autoAssignMissing?: boolean;
 }
 export class CouponQueryDto {
   @IsOptional() @IsEnum(CouponStatus) status?: CouponStatus;
